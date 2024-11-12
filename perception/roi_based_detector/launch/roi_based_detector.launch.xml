@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="input/objects" default="/perception/object_recognition/detection/rois4"/>
+  <arg name="output/objects" default="/perception/object_recognition/detection/roi_based_detector/objects"/>
+  <arg name="output/rois" default="/perception/object_recognition/detection/output_rois"/>
+
+  <node pkg="roi_based_detector" exec="roi_based_detector_node" name="roi_based_detector_node" output="screen">
+    <remap from="input" to="$(var input/objects)"/>
+    <remap from="output_objects" to="$(var output/objects)"/>
+    <remap from="output_rois" to="$(var output/rois)"/>
+  </node>
+</launch>
