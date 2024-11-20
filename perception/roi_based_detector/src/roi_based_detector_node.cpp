@@ -1,6 +1,20 @@
-// implement RoiBasedDetectorNode class
+// Copyright 2024 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "roi_based_detector/roi_based_detector_node.hpp"
+
+#include "rclcpp/qos.hpp"
 
 namespace roi_based_detector
 {
@@ -9,13 +23,25 @@ RoiBasedDetectorNode::RoiBasedDetectorNode(const rclcpp::NodeOptions & node_opti
 : Node("roi_based_detector_node", node_options)
 {
   // create publisher
-  rois_pub_ = this->create_publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>("output_rois", 1);
-  objects_pub_ = this->create_publisher<autoware_perception_msgs::msg::DetectedObjects>("output_objects", 1);
+  rois_pub_ = this->create_publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
+    "output_rois", 1);
+  objects_pub_ =
+    this->create_publisher<autoware_perception_msgs::msg::DetectedObjects>("output_objects", 1);
   // create subscriber
   roi_sub_ = this->create_subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
-    "input", 1, std::bind(&RoiBasedDetectorNode::roiCallback, this, std::placeholders::_1));
+    "input_rois", 1, std::bind(&RoiBasedDetectorNode::roiCallback, this, std::placeholders::_1));
+
+  camera_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+    "input_camera_info", rclcpp::QoS(10).reliability(rclcpp::ReliabilityPolicy::BestEffort),
+    std::bind(&RoiBasedDetectorNode::cameraInfoCallback, this, std::placeholders::_1));
 }
 
+void RoiBasedDetectorNode::cameraInfoCallback(
+  const sensor_msgs::msg::CameraInfo::ConstSharedPtr & msg)
+{
+  camera_info_ = *msg;
+  RCLCPP_INFO(get_logger(), "camera_info is received");
+}
 // implement roiCallback
 void RoiBasedDetectorNode::roiCallback(const tier4_perception_msgs::msg::DetectedObjectsWithFeature::ConstSharedPtr & msg)
 {

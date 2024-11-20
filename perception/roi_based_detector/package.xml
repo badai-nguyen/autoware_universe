@@ -7,14 +7,15 @@
   <maintainer email="dai.nguyen@tier4.jp">autoware</maintainer>
   <license>TODO: License declaration</license>
 
-
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>autoware_cmake</buildtool_depend>
-  <depend>tier4_perception_msgs</depend>
-  <depend>autoware_universe_utils</depend>
   <depend>autoware_perception_msgs</depend>
+  <depend>autoware_universe_utils</depend>
   <depend>object_recognition_utils</depend>
   <depend>rclcpp_components</depend>
+
+  <depend>sensor_msgs</depend>
+  <depend>tier4_perception_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
