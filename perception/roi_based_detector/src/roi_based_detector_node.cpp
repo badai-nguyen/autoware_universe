@@ -16,6 +16,17 @@
 
 #include "rclcpp/qos.hpp"
 
+#ifdef ROS_DISTRO_GALACTIC
+#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
+#else
+#include <tf2_eigen/tf2_eigen.hpp>
+
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
+#endif
+
 namespace roi_based_detector
 {
 // initialize Constructor
@@ -37,26 +48,29 @@ RoiBasedDetectorNode::RoiBasedDetectorNode(const rclcpp::NodeOptions & node_opti
   transform_listener_ = std::make_shared<autoware::universe_utils::TransformListener>(this);
 }
 
-Eigen::Matrix4d RoiBasedDetectorNode::transformToHomogeneous(const geometry_msgs::msg::Transform& transform) {
-    Eigen::Matrix4d homogeneous = Eigen::Matrix4d::Identity();
+Eigen::Matrix4d RoiBasedDetectorNode::transformToHomogeneous(
+  const geometry_msgs::msg::Transform & transform)
+{
+  Eigen::Matrix4d homogeneous = Eigen::Matrix4d::Identity();
 
-    // Extract translation
-    homogeneous(0, 3) = transform.translation.x;
-    homogeneous(1, 3) = transform.translation.y;
-    homogeneous(2, 3) = transform.translation.z;
+  // Extract translation
+  homogeneous(0, 3) = transform.translation.x;
+  homogeneous(1, 3) = transform.translation.y;
+  homogeneous(2, 3) = transform.translation.z;
 
-    // Extract rotation (quaternion to rotation matrix)
-    tf2::Quaternion quat(transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w);
-    tf2::Matrix3x3 rotationMatrix(quat);
+  // Extract rotation (quaternion to rotation matrix)
+  tf2::Quaternion quat(
+    transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w);
+  tf2::Matrix3x3 rotationMatrix(quat);
 
-    // Convert tf2::Matrix3x3 to Eigen::Matrix3d
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-            homogeneous(i, j) = rotationMatrix[i][j];
-        }
+  // Convert tf2::Matrix3x3 to Eigen::Matrix3d
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      homogeneous(i, j) = rotationMatrix[i][j];
     }
+  }
 
-    return homogeneous;
+  return homogeneous;
 }
 
 void RoiBasedDetectorNode::cameraInfoCallback(
@@ -73,7 +87,7 @@ void RoiBasedDetectorNode::roiCallback(
     RCLCPP_WARN(get_logger(), "camera_info is not received yet");
     return;
   }
-  Eigen::Matrix4d projection;
+  Eigen::Matrix4f projection;
   projection << camera_info_.p.at(0), camera_info_.p.at(1), camera_info_.p.at(2),
     camera_info_.p.at(3), camera_info_.p.at(4), camera_info_.p.at(5), camera_info_.p.at(6),
     camera_info_.p.at(7), camera_info_.p.at(8), camera_info_.p.at(9), camera_info_.p.at(10),
@@ -84,22 +98,18 @@ void RoiBasedDetectorNode::roiCallback(
   const double cx = camera_info_.k[2];
   const double cy = camera_info_.k[5];
 
-
   autoware_perception_msgs::msg::DetectedObjects objects;
 
   // get transform from camera frame to base_link frame
 
-  try
-  {
-    transform_ = transform_listener_->getTransform( "base_link", msg->header.frame_id, 
-      msg->header.stamp,
-      rclcpp::Duration::from_seconds(0.01));
-  }
-  catch (const tf2::TransformException & ex)
-  {
+  try {
+    transform_ = transform_listener_->getTransform(
+      "base_link", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.01));
+  } catch (const tf2::TransformException & ex) {
     RCLCPP_ERROR(get_logger(), "Failed to get transform: %s", ex.what());
     objects.header = msg->header;
     objects_pub_->publish(objects);
+    return;
   }
 
   if (transform_ == nullptr) {
@@ -107,13 +117,13 @@ void RoiBasedDetectorNode::roiCallback(
       get_logger(), *get_clock(), 5000, "getTransform failed. radar output will be empty.");
     objects.header = msg->header;
     objects_pub_->publish(objects);
+    return;
   }
 
-  RCLCPP_INFO(get_logger(), "transform is received translation.x: %f, translation.y: %f, translation.z: %f",
-              transform_->transform.translation.x, transform_->transform.translation.y, transform_->transform.translation.z);
-  Eigen::Matrix4d inv_project = projection.inverse();
-  auto homogeneous_matrix = transformToHomogeneous(transform_->transform);
-  Eigen::Matrix4d mul_trans_inv_project = homogeneous_matrix * inv_project;
+  const Eigen::Matrix4f transform_matrix_cam2base =
+    tf2::transformToEigen(transform_->transform).matrix().cast<float>();
+  Eigen::Matrix4f inv_project = projection.inverse();
+  Eigen::Matrix4f camera2lidar_mul_inv_projection = transform_matrix_cam2base * inv_project;
 
   for (const auto & obj_with_feature : msg->feature_objects) {
     autoware_perception_msgs::msg::DetectedObject object;
@@ -123,27 +133,27 @@ void RoiBasedDetectorNode::roiCallback(
 
     const double normalized_projected_x = (obj_with_feature.feature.roi.x_offset - cx) / fx;
     const double normalized_projected_y = (obj_with_feature.feature.roi.y_offset - cy) / fy;
-    RCLCPP_INFO(get_logger(), "normalized_projected_x: %f, normalized_projected_y: %f", normalized_projected_x, normalized_projected_y);
-    auto projected_point_z =
-      - mul_trans_inv_project(2, 3) / (mul_trans_inv_project(2, 0) * normalized_projected_x +
-                            mul_trans_inv_project(2, 1) * normalized_projected_y + mul_trans_inv_project(2, 2));
-    auto point_x = (mul_trans_inv_project(0, 0) * normalized_projected_x +
-                             mul_trans_inv_project(0, 1) * normalized_projected_y + mul_trans_inv_project(0, 2))*projected_point_z + mul_trans_inv_project(0, 3);
+    // auto projected_point_z_inv = (camera2lidar_mul_inv_projection(3,0)*normalized_projected_x +
+    // camera2lidar_mul_inv_projection(3,1)*normalized_projected_y +
+    // camera2lidar_mul_inv_projection(3,2))/(1.0 - camera2lidar_mul_inv_projection(3,3));
+    auto projected_point_z = -camera2lidar_mul_inv_projection(2, 3) /
+                             (camera2lidar_mul_inv_projection(2, 0) * normalized_projected_x +
+                              camera2lidar_mul_inv_projection(2, 1) * normalized_projected_y +
+                              camera2lidar_mul_inv_projection(2, 2));
 
-    auto point_y = (mul_trans_inv_project(1, 0) * normalized_projected_x +
-                              mul_trans_inv_project(1, 1) * normalized_projected_y + mul_trans_inv_project(1, 2))*projected_point_z + mul_trans_inv_project(1, 3);
-    auto point_z = (mul_trans_inv_project(2, 0) * normalized_projected_x +
-                              mul_trans_inv_project(2, 1) * normalized_projected_y + mul_trans_inv_project(2, 2))*projected_point_z + mul_trans_inv_project(2, 3);;
-    // tranform point to )base_link frame
+    Eigen::Vector4f projected_point = Eigen::Vector4f(
+      normalized_projected_x * projected_point_z, normalized_projected_y * projected_point_z,
+      projected_point_z, 1.0);
+    Eigen::Vector4f point_lidar = transform_matrix_cam2base * inv_project * projected_point;
     geometry_msgs::msg::PoseStamped pose_stamped{};
-    pose_stamped.pose.position.x = point_x;
-    pose_stamped.pose.position.y = point_y;
-    pose_stamped.pose.position.z = point_z;
-    geometry_msgs::msg::PoseStamped transformed_pose_stamped{};
+    pose_stamped.pose.position.x = point_lidar.x();
+    pose_stamped.pose.position.y = point_lidar.y();
+    pose_stamped.pose.position.z = point_lidar.z();
+    // geometry_msgs::msg::PoseStamped transformed_pose_stamped{};
 
-    tf2::doTransform(pose_stamped, transformed_pose_stamped, *transform_);
+    // tf2::doTransform(pose_stamped, transformed_pose_stamped, *transform_);
 
-    object.kinematics.pose_with_covariance.pose = transformed_pose_stamped.pose;
+    object.kinematics.pose_with_covariance.pose = pose_stamped.pose;
     objects.objects.push_back(object);
     continue;
   }

@@ -56,7 +56,7 @@ private:
     const tier4_perception_msgs::msg::DetectedObjectWithFeature & roi,
     const sensor_msgs::msg::CameraInfo & camera_info,
     autoware_perception_msgs::msg::DetectedObject & object);
-  Eigen::Matrix4d transformToHomogeneous(const geometry_msgs::msg::Transform& transform); 
+  Eigen::Matrix4d transformToHomogeneous(const geometry_msgs::msg::Transform & transform);
 
   rclcpp::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr rois_pub_;
   rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
