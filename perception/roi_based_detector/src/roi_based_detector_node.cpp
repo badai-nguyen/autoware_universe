@@ -93,10 +93,10 @@ void RoiBasedDetectorNode::roiCallback(
     camera_info_.p.at(7), camera_info_.p.at(8), camera_info_.p.at(9), camera_info_.p.at(10),
     camera_info_.p.at(11), 0.0, 0.0, 0.0, 1.0;
 
-  const double fx = camera_info_.k[0];
-  const double fy = camera_info_.k[4];
-  const double cx = camera_info_.k[2];
-  const double cy = camera_info_.k[5];
+  // const double fx = camera_info_.k[0];
+  // const double fy = camera_info_.k[4];
+  // const double cx = camera_info_.k[2];
+  // const double cy = camera_info_.k[5];
 
   autoware_perception_msgs::msg::DetectedObjects objects;
 
@@ -131,24 +131,48 @@ void RoiBasedDetectorNode::roiCallback(
     // object.classification.front().label = obj_with_feature.object.classification.front().label;
     object.existence_probability = obj_with_feature.object.existence_probability;
 
-    const double normalized_projected_x = (obj_with_feature.feature.roi.x_offset - cx) / fx;
-    const double normalized_projected_y = (obj_with_feature.feature.roi.y_offset - cy) / fy;
+    const double normalized_projected_x = static_cast<double>(obj_with_feature.feature.roi.x_offset);
+    const double normalized_projected_y = static_cast<double>(obj_with_feature.feature.roi.y_offset);
     // auto projected_point_z_inv = (camera2lidar_mul_inv_projection(3,0)*normalized_projected_x +
     // camera2lidar_mul_inv_projection(3,1)*normalized_projected_y +
     // camera2lidar_mul_inv_projection(3,2))/(1.0 - camera2lidar_mul_inv_projection(3,3));
-    auto projected_point_z = -camera2lidar_mul_inv_projection(2, 3) /
-                             (camera2lidar_mul_inv_projection(2, 0) * normalized_projected_x +
+    auto w_div_projected_z = -(camera2lidar_mul_inv_projection(2, 0) * normalized_projected_x +
                               camera2lidar_mul_inv_projection(2, 1) * normalized_projected_y +
-                              camera2lidar_mul_inv_projection(2, 2));
-
+                              camera2lidar_mul_inv_projection(2, 2))/camera2lidar_mul_inv_projection(2, 3);
+    auto projected_z = 1.0 / (camera2lidar_mul_inv_projection(3, 0) * normalized_projected_x +
+                              camera2lidar_mul_inv_projection(3, 1) * normalized_projected_y +
+                              camera2lidar_mul_inv_projection(3, 2) + camera2lidar_mul_inv_projection(3, 3) * w_div_projected_z);
+    auto w = w_div_projected_z * projected_z;
     Eigen::Vector4f projected_point = Eigen::Vector4f(
-      normalized_projected_x * projected_point_z, normalized_projected_y * projected_point_z,
-      projected_point_z, 1.0);
-    Eigen::Vector4f point_lidar = transform_matrix_cam2base * inv_project * projected_point;
+      normalized_projected_x*projected_z, normalized_projected_y *projected_z,
+      projected_z, w);
+    
+    RCLCPP_INFO(get_logger(), "object.pose.x: %f, y: %f, z: %f", normalized_projected_x, normalized_projected_y, projected_z);
+    Eigen::Vector4f point_lidar = camera2lidar_mul_inv_projection * projected_point;
     geometry_msgs::msg::PoseStamped pose_stamped{};
     pose_stamped.pose.position.x = point_lidar.x();
     pose_stamped.pose.position.y = point_lidar.y();
     pose_stamped.pose.position.z = point_lidar.z();
+    object.shape.dimensions.x = 0.5;
+    object.shape.dimensions.y = 0.5;
+    object.shape.dimensions.z = 0.0;
+    geometry_msgs::msg::Point32 point;
+    point.x = point_lidar.x() - 0.5/2;
+    point.y = point_lidar.y() - 0.5/2;
+    point.z = point_lidar.z();
+    object.shape.footprint.points.push_back(point);
+    point.x = point_lidar.x() + 0.5/2;
+    point.y = point_lidar.y() - 0.5/2;
+    point.z = point_lidar.z();
+    object.shape.footprint.points.push_back(point);
+    point.x = point_lidar.x() + 0.5/2;
+    point.y = point_lidar.y() + 0.5/2;
+    point.z = point_lidar.z();
+    object.shape.footprint.points.push_back(point);
+    point.x = point_lidar.x() - 0.5/2;
+    point.y = point_lidar.y() + 0.5/2;
+    point.z = point_lidar.z();
+    object.shape.footprint.points.push_back(point);
     // geometry_msgs::msg::PoseStamped transformed_pose_stamped{};
 
     // tf2::doTransform(pose_stamped, transformed_pose_stamped, *transform_);
@@ -168,69 +192,72 @@ void RoiBasedDetectorNode::convertRoiToObjects(
   const sensor_msgs::msg::CameraInfo & camera_info,
   autoware_perception_msgs::msg::DetectedObject & object)
 {
-  Eigen::Matrix4d projection;
-  projection << camera_info.p.at(0), camera_info.p.at(1), camera_info.p.at(2), camera_info.p.at(3),
-    camera_info.p.at(4), camera_info.p.at(5), camera_info.p.at(6), camera_info.p.at(7),
-    camera_info.p.at(8), camera_info.p.at(9), camera_info.p.at(10), camera_info.p.at(11), 0.0, 0.0,
-    0.0, 1.0;
+  (void)roi;
+  (void)camera_info;
+  (void)object;
+  // Eigen::Matrix4d projection;
+  // projection << camera_info.p.at(0), camera_info.p.at(1), camera_info.p.at(2), camera_info.p.at(3),
+  //   camera_info.p.at(4), camera_info.p.at(5), camera_info.p.at(6), camera_info.p.at(7),
+  //   camera_info.p.at(8), camera_info.p.at(9), camera_info.p.at(10), camera_info.p.at(11), 0.0, 0.0,
+  //   0.0, 1.0;
 
-  const double fx = camera_info.k[0];
-  const double fy = camera_info.k[4];
-  const double cx = camera_info.k[2];
-  const double cy = camera_info.k[5];
+  // const double fx = camera_info.k[0];
+  // const double fy = camera_info.k[4];
+  // const double cx = camera_info.k[2];
+  // const double cy = camera_info.k[5];
 
-  object.classification.front().label = roi.object.classification.front().label;
-  object.classification.front().probability = roi.object.classification.front().probability;
+  // object.classification.front().label = roi.object.classification.front().label;
+  // object.classification.front().probability = roi.object.classification.front().probability;
 
-  const double normalized_projected_x = (roi.feature.roi.x_offset - cx) / fx;
-  const double normalized_projected_y = (roi.feature.roi.y_offset - cy) / fy;
+  // const double normalized_projected_x = (roi.feature.roi.x_offset - cx) / fx;
+  // const double normalized_projected_y = (roi.feature.roi.y_offset - cy) / fy;
 
-  // get transform from camera frame to base_link frame
-  transform_ = transform_listener_->getTransform(
-    "base_link", camera_info.header.frame_id, camera_info.header.stamp,
-    rclcpp::Duration::from_seconds(1.0));
+  // // get transform from camera frame to base_link frame
   // transform_ = transform_listener_->getTransform(
-  //         node_param_.new_frame_id, objects_data_.at(i)->header.frame_id,
-  //         objects_data_.at(i)->header.stamp, rclcpp::Duration::from_seconds(0.01));
-  // const auto transform_matrix = getTransformMatrix(tf_buffer_, "base_link",
-  // camera_info.header.frame_id, camera_info.header.stamp);
-  Eigen::Matrix4d inv_project = projection.inverse();
-  // Eigen::Vector4d fake_centroid = inv_project * Eigen::Vector4d(normalized_projected_x,
-  // normalized_projected_y, 1.0, 1.0/z'); assume z = 0.0 for object on the ground
-  // normalized_projected_x * inv_project(2, 0) + normalized_projected_y * inv_project(2, 1) +
-  // inv_project(2, 3); projected_point.x / projected_point.z, projected_point.y /
-  // projected_point.z, 1  =  projection(4x3) * Eigen::Vector4d(*iter_x, *iter_y, *iter_z, 1.0) /
-  // projected_point.z; inv_project * (projected_point.x / projected_point.z, projected_point.y /
-  // projected_point.z, 1, 1/projected_point.z)  =  Eigen::Vector4d(*iter_x, *iter_y, *iter_z, 1.0)
-  // / projected_point.z; inv_project(2,0) * normalized_projected_x + inv_project(2,1) *
-  // normalized_projected_y + inv_project(2,3) = 0.0; inv_project(2,0) * normalized_projected_x +
-  // inv_project(2,1) * normalized_projected_y = -inv_project(2,3);
+  //   "base_link", camera_info.header.frame_id, camera_info.header.stamp,
+  //   rclcpp::Duration::from_seconds(1.0));
+  // // transform_ = transform_listener_->getTransform(
+  // //         node_param_.new_frame_id, objects_data_.at(i)->header.frame_id,
+  // //         objects_data_.at(i)->header.stamp, rclcpp::Duration::from_seconds(0.01));
+  // // const auto transform_matrix = getTransformMatrix(tf_buffer_, "base_link",
+  // // camera_info.header.frame_id, camera_info.header.stamp);
+  // Eigen::Matrix4d inv_project = projection.inverse();
+  // // Eigen::Vector4d fake_centroid = inv_project * Eigen::Vector4d(normalized_projected_x,
+  // // normalized_projected_y, 1.0, 1.0/z'); assume z = 0.0 for object on the ground
+  // // normalized_projected_x * inv_project(2, 0) + normalized_projected_y * inv_project(2, 1) +
+  // // inv_project(2, 3); projected_point.x / projected_point.z, projected_point.y /
+  // // projected_point.z, 1  =  projection(4x3) * Eigen::Vector4d(*iter_x, *iter_y, *iter_z, 1.0) /
+  // // projected_point.z; inv_project * (projected_point.x / projected_point.z, projected_point.y /
+  // // projected_point.z, 1, 1/projected_point.z)  =  Eigen::Vector4d(*iter_x, *iter_y, *iter_z, 1.0)
+  // // / projected_point.z; inv_project(2,0) * normalized_projected_x + inv_project(2,1) *
+  // // normalized_projected_y + inv_project(2,3) = 0.0; inv_project(2,0) * normalized_projected_x +
+  // // inv_project(2,1) * normalized_projected_y = -inv_project(2,3);
 
-  auto projected_point_z =
-    -inv_project(2, 3) / (inv_project(2, 0) * normalized_projected_x +
-                          inv_project(2, 1) * normalized_projected_y + inv_project(2, 2));
-  auto projected_point_x = normalized_projected_x * projected_point_z;
-  auto projected_point_y = normalized_projected_y * projected_point_z;
+  // auto projected_point_z =
+  //   -inv_project(2, 3) / (inv_project(2, 0) * un_projected_x +
+  //                         inv_project(2, 1) * un_projected_y + inv_project(2, 2));
+  // auto projected_point_x = un_projected_x * projected_point_z;
+  // auto projected_point_y = un_projected_y * projected_point_z;
 
-  // transform projected point to base_link frame using transform matrix
-  geometry_msgs::msg::PointStamped transformed_point;
-  transformed_point.point.x = projected_point_x;
-  transformed_point.point.y = projected_point_y;
-  transformed_point.point.z = projected_point_z;
+  // // transform projected point to base_link frame using transform matrix
+  // geometry_msgs::msg::PointStamped transformed_point;
+  // transformed_point.point.x = projected_point_x;
+  // transformed_point.point.y = projected_point_y;
+  // transformed_point.point.z = projected_point_z;
 
-  // tranform point to base_link frame
-  geometry_msgs::msg::PoseStamped pose_stamped{};
-  pose_stamped.pose.position.x = transformed_point.point.x;
-  pose_stamped.pose.position.y = transformed_point.point.y;
-  pose_stamped.pose.position.z = transformed_point.point.z;
-  geometry_msgs::msg::PoseStamped transformed_pose_stamped{};
+  // // tranform point to base_link frame
+  // geometry_msgs::msg::PoseStamped pose_stamped{};
+  // pose_stamped.pose.position.x = transformed_point.point.x;
+  // pose_stamped.pose.position.y = transformed_point.point.y;
+  // pose_stamped.pose.position.z = transformed_point.point.z;
+  // geometry_msgs::msg::PoseStamped transformed_pose_stamped{};
 
-  tf2::doTransform(pose_stamped, transformed_pose_stamped, *transform_);
+  // tf2::doTransform(pose_stamped, transformed_pose_stamped, *transform_);
 
-  // transform point to base_link frame
+  // // transform point to base_link frame
 
-  object.kinematics.pose_with_covariance.pose = transformed_pose_stamped.pose;
-  object.existence_probability = roi.object.existence_probability;
+  // object.kinematics.pose_with_covariance.pose = transformed_pose_stamped.pose;
+  // object.existence_probability = roi.object.existence_probability;
 }
 
 }  // namespace roi_based_detector

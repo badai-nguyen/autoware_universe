@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
-  <arg name="input/rois" default="/perception/object_recognition/detection/rois4"/>
-  <arg name="camera/camera_info" default="/sensing/camera/camera4/camera_info"/>
+  <arg name="input/rois" default="/perception/object_recognition/detection/rois7"/>
+  <arg name="camera/camera_info" default="/sensing/camera/camera7/camera_info"/>
   <arg name="output/objects" default="/perception/object_recognition/detection/roi_based_detector/objects"/>
   <arg name="output/rois" default="/perception/object_recognition/detection/output_rois"/>
 
