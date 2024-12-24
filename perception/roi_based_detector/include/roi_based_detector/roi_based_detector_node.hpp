@@ -43,6 +43,12 @@
 
 namespace roi_based_detector
 {
+using autoware::universe_utils::TransformListener;
+using autoware_perception_msgs::msg::DetectedObject;
+using autoware_perception_msgs::msg::DetectedObjects;
+using sensor_msgs::msg::CameraInfo;
+using tier4_perception_msgs::msg::DetectedObjectWithFeature;
+using tier4_perception_msgs::msg::DetectedObjectsWithFeature;
 class RoiBasedDetectorNode : public rclcpp::Node
 {
 public:
@@ -50,32 +56,21 @@ public:
 
 private:
   void roiCallback(
-    const tier4_perception_msgs::msg::DetectedObjectsWithFeature::ConstSharedPtr & msg);
-  void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::ConstSharedPtr & msg);
+    const DetectedObjectsWithFeature::ConstSharedPtr & msg);
+  void cameraInfoCallback(const CameraInfo::ConstSharedPtr & msg);
   void convertRoiToObjects(
-    const tier4_perception_msgs::msg::DetectedObjectWithFeature & roi,
-    const sensor_msgs::msg::CameraInfo & camera_info,
-    autoware_perception_msgs::msg::DetectedObject & object);
+    const DetectedObjectWithFeature & roi,
+    const CameraInfo & camera_info,
+    DetectedObject & object);
   Eigen::Matrix4d transformToHomogeneous(const geometry_msgs::msg::Transform & transform);
 
-  rclcpp::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr rois_pub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
-  rclcpp::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr roi_sub_;
+  rclcpp::Publisher<DetectedObjectsWithFeature>::SharedPtr rois_pub_;
+  rclcpp::Publisher<DetectedObjects>::SharedPtr objects_pub_;
+  rclcpp::Subscription<DetectedObjectsWithFeature>::SharedPtr roi_sub_;
   // camera_info sub
-  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
-  sensor_msgs::msg::CameraInfo camera_info_;
-  // sync subscriber
-  // message_filters::Subscriber<tier4_perception_msgs::msg::DetectedObjectsWithFeature> roi_sub_;
-  // message_filters::Subscriber<sensor_msgs::msg::CameraInfo> camera_info_sub_;
-  // using SyncPolicy = message_filters::sync_policies::ApproximateTime<
-  //   tier4_perception_msgs::msg::DetectedObjectsWithFeature, sensor_msgs::msg::CameraInfo>;
-  // using Sync = message_filters::Synchronizer<SyncPolicy>;
-  // // std::shared_ptr<Sync> sync_ptr_;
-  // Sync sync_;
-  // tf2_ros::Buffer tf_buffer_;
-  // tf2_ros::TransformListener tf_listener_;
-
-  std::shared_ptr<autoware::universe_utils::TransformListener> transform_listener_;
+  rclcpp::Subscription<CameraInfo>::SharedPtr camera_info_sub_;
+  CameraInfo camera_info_;
+  std::shared_ptr<TransformListener> transform_listener_;
   geometry_msgs::msg::TransformStamped::ConstSharedPtr transform_;
 };
 }  // namespace roi_based_detector
