@@ -63,6 +63,7 @@ private:
     const CameraInfo & camera_info,
     DetectedObject & object);
   Eigen::Matrix4d transformToHomogeneous(const geometry_msgs::msg::Transform & transform);
+  void pixelTo3DPoint(const Eigen::Vector2f &pixel, const Eigen::Matrix4f & transform, Eigen::Vector4f & point);
 
   rclcpp::Publisher<DetectedObjectsWithFeature>::SharedPtr rois_pub_;
   rclcpp::Publisher<DetectedObjects>::SharedPtr objects_pub_;
@@ -70,6 +71,10 @@ private:
   // camera_info sub
   rclcpp::Subscription<CameraInfo>::SharedPtr camera_info_sub_;
   CameraInfo camera_info_;
+  Eigen::Matrix4f inv_projection_;
+  bool is_inv_projection_initialized_{false};
+  Eigen::Matrix4f camera2lidar_mul_inv_projection_;
+  bool is_camera2lidar_mul_inv_projection_initialized_{false};
   std::shared_ptr<TransformListener> transform_listener_;
   geometry_msgs::msg::TransformStamped::ConstSharedPtr transform_;
 };
