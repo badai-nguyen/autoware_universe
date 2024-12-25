@@ -125,7 +125,7 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
     objects_pub_->publish(objects);
     return;
   }
-  if(is_camera2lidar_mul_inv_projection_initialized_)
+  if(!is_camera2lidar_mul_inv_projection_initialized_)
   {
     const Eigen::Matrix4f transform_matrix_cam2base =
       tf2::transformToEigen(transform_->transform).matrix().cast<float>();
