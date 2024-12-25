@@ -165,11 +165,20 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
       static_cast<float>(
         obj_with_feature.feature.roi.y_offset + obj_with_feature.feature.roi.height)));
 
-    std::vector<Eigen::Vector4f> footprint_points;
+    float max_x{-150.0}, min_x{150.0}, max_y{-150.0}, min_y{150.0};
     for (const auto & pixel : footprint_pixels) {
       Eigen::Vector4f point;
       pixelTo3DPoint(pixel, camera2lidar_mul_inv_projection_, point);
-      footprint_points.push_back(point);
+      geometry_msgs::msg::Point32 geo_point;
+      geo_point.x = point(0);
+      geo_point.y = point(1);
+      geo_point.z = point(2);
+      object.shape.footprint.points.push_back(geo_point);
+      max_x = std::max(max_x, point(0));
+      min_x = std::min(min_x, point(0));
+      max_y = std::max(max_y, point(1));
+      min_y = std::min(min_y, point(1));
+      
     }
 
     geometry_msgs::msg::PoseStamped pose_stamped{};
@@ -178,16 +187,9 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
     pose_stamped.pose.position.z = point_center(2);
     object.kinematics.pose_with_covariance.pose = pose_stamped.pose;
 
-    object.shape.dimensions.x = std::abs(footprint_points[0](0) - footprint_points[1](0));
-    object.shape.dimensions.y = std::abs(footprint_points[0](1) - footprint_points[3](1));
-    object.shape.dimensions.z = 0.0;
-    for (const auto & point : footprint_points) {
-      geometry_msgs::msg::Point32 geo_point;
-      geo_point.x = point(0);
-      geo_point.y = point(1);
-      geo_point.z = point(2);
-      object.shape.footprint.points.push_back(geo_point);
-    }
+    object.shape.dimensions.x = std::abs(max_x - min_x);
+    object.shape.dimensions.y = std::abs(max_y - min_y);
+
     objects.objects.push_back(object);
     continue;
   }
