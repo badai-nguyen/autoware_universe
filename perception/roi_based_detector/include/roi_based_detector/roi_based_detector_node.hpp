@@ -73,6 +73,8 @@ private:
   bool is_camera2lidar_mul_inv_projection_initialized_{false};
   std::shared_ptr<TransformListener> transform_listener_;
   geometry_msgs::msg::TransformStamped::ConstSharedPtr transform_;
+
+  std::string target_frame_;
 };
 }  // namespace roi_based_detector
 

@@ -33,6 +33,7 @@ namespace roi_based_detector
 RoiBasedDetectorNode::RoiBasedDetectorNode(const rclcpp::NodeOptions & node_options)
 : Node("roi_based_detector_node", node_options)
 {
+  target_frame_ = declare_parameter<std::string>("target_frame");
   // create publisher
   rois_pub_ = this->create_publisher<DetectedObjectsWithFeature>("output_rois", 1);
   objects_pub_ = this->create_publisher<DetectedObjects>("output_objects", 1);
@@ -110,7 +111,7 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
 
   try {
     transform_ = transform_listener_->getTransform(
-      "base_link", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.01));
+      target_frame_, msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.01));
   } catch (const tf2::TransformException & ex) {
     RCLCPP_ERROR(get_logger(), "Failed to get transform: %s", ex.what());
     objects.header = msg->header;
@@ -193,7 +194,7 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
   }
   rois_pub_->publish(*msg);
   objects.header = msg->header;
-  objects.header.frame_id = "base_link";
+  objects.header.frame_id = target_frame_;
   objects_pub_->publish(objects);
 }
 }  // namespace roi_based_detector
