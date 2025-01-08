@@ -14,7 +14,7 @@
 
 #include "roi_based_detector/roi_based_detector_node.hpp"
 
-#include "rclcpp/qos.hpp"
+#include <rclcpp/qos.hpp>
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_eigen/tf2_eigen.h>
@@ -120,13 +120,12 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
 
   if (transform_ == nullptr) {
     RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), 5000, "getTransform failed. radar output will be empty.");
+      get_logger(), *get_clock(), 5000, "getTransform failed. output objects will be empty.");
     objects.header = msg->header;
     objects_pub_->publish(objects);
     return;
   }
-  if(!is_camera2lidar_mul_inv_projection_initialized_)
-  {
+  if (!is_camera2lidar_mul_inv_projection_initialized_) {
     const Eigen::Matrix4f transform_matrix_cam2base =
       tf2::transformToEigen(transform_->transform).matrix().cast<float>();
     camera2lidar_mul_inv_projection_ = transform_matrix_cam2base * inv_projection_;
@@ -135,8 +134,8 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
 
   for (const auto & obj_with_feature : msg->feature_objects) {
     DetectedObject object;
+    // TODO(badai-nguyen): add class selection
     object.classification.push_back(obj_with_feature.object.classification.front());
-    // object.classification.front().label = obj_with_feature.object.classification.front().label;
     object.existence_probability = obj_with_feature.object.existence_probability;
     Eigen::Vector2f pixel_center(
       static_cast<float>(
@@ -178,7 +177,6 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
       min_x = std::min(min_x, point(0));
       max_y = std::max(max_y, point(1));
       min_y = std::min(min_y, point(1));
-      
     }
 
     geometry_msgs::msg::PoseStamped pose_stamped{};
@@ -198,15 +196,6 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
   objects.header.frame_id = "base_link";
   objects_pub_->publish(objects);
 }
-
-void RoiBasedDetectorNode::convertRoiToObjects(
-  const DetectedObjectWithFeature & roi, const CameraInfo & camera_info, DetectedObject & object)
-{
-  (void)roi;
-  (void)camera_info;
-  (void)object;
-}
-
 }  // namespace roi_based_detector
 
 #include <rclcpp_components/register_node_macro.hpp>

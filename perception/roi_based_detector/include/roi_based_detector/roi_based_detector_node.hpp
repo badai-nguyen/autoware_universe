@@ -15,7 +15,7 @@
 #ifndef ROI_BASED_DETECTOR__ROI_BASED_DETECTOR_NODE_HPP_
 #define ROI_BASED_DETECTOR__ROI_BASED_DETECTOR_NODE_HPP_
 
-#include "autoware/universe_utils/ros/transform_listener.hpp"
+#include <autoware/universe_utils/ros/transform_listener.hpp>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -58,10 +58,6 @@ private:
   void roiCallback(
     const DetectedObjectsWithFeature::ConstSharedPtr & msg);
   void cameraInfoCallback(const CameraInfo::ConstSharedPtr & msg);
-  void convertRoiToObjects(
-    const DetectedObjectWithFeature & roi,
-    const CameraInfo & camera_info,
-    DetectedObject & object);
   Eigen::Matrix4d transformToHomogeneous(const geometry_msgs::msg::Transform & transform);
   void pixelTo3DPoint(const Eigen::Vector2f &pixel, const Eigen::Matrix4f & transform, Eigen::Vector4f & point);
 
