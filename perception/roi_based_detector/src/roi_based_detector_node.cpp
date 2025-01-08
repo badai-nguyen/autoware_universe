@@ -34,6 +34,14 @@ RoiBasedDetectorNode::RoiBasedDetectorNode(const rclcpp::NodeOptions & node_opti
 : Node("roi_based_detector_node", node_options)
 {
   target_frame_ = declare_parameter<std::string>("target_frame");
+  ignore_class_.UNKNOWN = declare_parameter<bool>("ignore_class.UNKNOWN");
+  ignore_class_.CAR = declare_parameter<bool>("ignore_class.CAR");
+  ignore_class_.TRUCK = declare_parameter<bool>("ignore_class.TRUCK");
+  ignore_class_.BUS = declare_parameter<bool>("ignore_class.BUS");
+  ignore_class_.TRAILER = declare_parameter<bool>("ignore_class.TRAILER");
+  ignore_class_.MOTORCYCLE = declare_parameter<bool>("ignore_class.MOTORCYCLE");
+  ignore_class_.BICYCLE = declare_parameter<bool>("ignore_class.BICYCLE");
+  ignore_class_.PEDESTRIAN = declare_parameter<bool>("ignore_class.PEDESTRIAN");
   // create publisher
   rois_pub_ = this->create_publisher<DetectedObjectsWithFeature>("output_rois", 1);
   objects_pub_ = this->create_publisher<DetectedObjects>("output_objects", 1);
@@ -135,7 +143,10 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
 
   for (const auto & obj_with_feature : msg->feature_objects) {
     DetectedObject object;
-    // TODO(badai-nguyen): add class selection
+    const auto & label = obj_with_feature.object.classification.front().label;
+    if (!ignore_class_.isIgnore(label)) {
+      continue;
+    }
     object.classification.push_back(obj_with_feature.object.classification.front());
     object.existence_probability = obj_with_feature.object.existence_probability;
     Eigen::Vector2f pixel_center(
@@ -190,7 +201,6 @@ void RoiBasedDetectorNode::roiCallback(const DetectedObjectsWithFeature::ConstSh
     object.shape.dimensions.y = std::abs(max_y - min_y);
 
     objects.objects.push_back(object);
-    continue;
   }
   rois_pub_->publish(*msg);
   objects.header = msg->header;

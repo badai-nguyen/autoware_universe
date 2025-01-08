@@ -22,6 +22,7 @@
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <tier4_perception_msgs/msg/detected_objects_with_feature.hpp>
+#include <tier4_perception_msgs/msg/semantic.hpp>
 
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
@@ -49,12 +50,32 @@ using autoware_perception_msgs::msg::DetectedObjects;
 using sensor_msgs::msg::CameraInfo;
 using tier4_perception_msgs::msg::DetectedObjectWithFeature;
 using tier4_perception_msgs::msg::DetectedObjectsWithFeature;
+using Label = autoware_perception_msgs::msg::ObjectClassification;
+
 class RoiBasedDetectorNode : public rclcpp::Node
 {
 public:
   explicit RoiBasedDetectorNode(const rclcpp::NodeOptions & node_options);
 
 private:
+  struct IgnoreLabel{
+    bool UNKNOWN;
+    bool CAR;
+    bool TRUCK;
+    bool BUS;
+    bool TRAILER;
+    bool MOTORCYCLE;
+    bool BICYCLE;
+    bool PEDESTRIAN;
+    bool isIgnore(const uint8_t label) const
+    {
+      return (label == Label::UNKNOWN && UNKNOWN) || (label == Label::CAR && CAR) ||
+            (label == Label::TRUCK && TRUCK) || (label == Label::BUS && BUS) ||
+            (label == Label::TRAILER && TRAILER) || (label == Label::MOTORCYCLE && MOTORCYCLE) ||
+            (label == Label::BICYCLE && BICYCLE) || (label == Label::PEDESTRIAN && PEDESTRIAN);
+    }
+  }; // struct IgnoreLabel
+  IgnoreLabel ignore_class_;
   void roiCallback(
     const DetectedObjectsWithFeature::ConstSharedPtr & msg);
   void cameraInfoCallback(const CameraInfo::ConstSharedPtr & msg);
