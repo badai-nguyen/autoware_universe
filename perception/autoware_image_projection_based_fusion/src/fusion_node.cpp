@@ -266,11 +266,20 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::camera_info_callback(
   // Create the CameraProjection only when the camera info arrives for the first time.
   // This assume the camera info does not change while the node is running
   auto & det2d_status = det2d_status_list_.at(rois_id);
-  if (det2d_status.camera_projector_ptr == nullptr && check_camera_info(*input_camera_info_msg)) {
+  if (
+    det2d_status.camera_projector_ptr == nullptr && !det2d.is_inv_projection_initialized_ &&
+    check_camera_info(*input_camera_info_msg)) {
     det2d_status.camera_projector_ptr = std::make_unique<CameraProjection>(
       *input_camera_info_msg, approx_grid_cell_w_size_, approx_grid_cell_h_size_,
       det2d_status.project_to_unrectified_image, det2d_status.approximate_camera_projection);
     det2d_status.camera_projector_ptr->initialize();
+    Eigen::Matrix4f projection;
+    projection << camera_info_.p.at(0), camera_info_.p.at(1), camera_info_.p.at(2),
+      camera_info_.p.at(3), camera_info_.p.at(4), camera_info_.p.at(5), camera_info_.p.at(6),
+      camera_info_.p.at(7), camera_info_.p.at(8), camera_info_.p.at(9), camera_info_.p.at(10),
+      camera_info_.p.at(11), 0.0, 0.0, 0.0, 1.0;
+    det2d.inv_projection_ = projection.inverse();
+    det2d.is_inv_projection_initialized_ = true;
 
     std::unique_lock<std::mutex> fusion_collectors_lock(fusion_collectors_mutex_);
     for (auto & collector : fusion_collectors_) {

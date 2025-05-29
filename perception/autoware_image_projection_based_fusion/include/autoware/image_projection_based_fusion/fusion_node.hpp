@@ -54,6 +54,41 @@
 
 namespace autoware::image_projection_based_fusion
 {
+using autoware_perception_msgs::msg::DetectedObject;
+using autoware_perception_msgs::msg::DetectedObjects;
+using sensor_msgs::msg::CameraInfo;
+using sensor_msgs::msg::Image;
+using PointCloudMsgType = sensor_msgs::msg::PointCloud2;
+using RoiMsgType = tier4_perception_msgs::msg::DetectedObjectsWithFeature;
+using ClusterMsgType = tier4_perception_msgs::msg::DetectedObjectsWithFeature;
+using ClusterObjType = tier4_perception_msgs::msg::DetectedObjectWithFeature;
+using tier4_perception_msgs::msg::DetectedObjectWithFeature;
+using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
+using autoware::image_projection_based_fusion::CameraProjection;
+using autoware_perception_msgs::msg::ObjectClassification;
+
+template <class Msg2D>
+struct Det2dStatus
+{
+  // camera index
+  std::size_t id = 0;
+  // camera projection
+  std::unique_ptr<CameraProjection> camera_projector_ptr;
+  bool project_to_unrectified_image = false;
+  bool approximate_camera_projection = false;
+  // process flags
+  bool is_fused = false;
+  // timing
+  double input_offset_ms = 0.0;
+  // cache
+  std::map<int64_t, typename Msg2D::ConstSharedPtr> cached_det2d_msgs;
+
+  Eigen::Matrix4f inv_projection_;
+  bool is_inv_projection_initialized_{false};
+  bool is_camera2lidar_mul_inv_projection_initialized_{false};
+  std::shared_ptr<TransformListener> transform_listener_;
+  geometry_msgs::msg::TransformStamped::ConstSharedPtr transform_;
+};
 
 template <class Msg3D, class Msg2D, class ExportObj>
 class FusionNode : public rclcpp::Node
