@@ -58,6 +58,7 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
   const uint8_t gpu_id = this->declare_parameter<uint8_t>("gpu_id");
 
   std::string color_map_path = this->declare_parameter<std::string>("color_map_path");
+  getLabelNames(color_map_path, semseg_label_list_);
 
   if (!readLabelFile(label_path)) {
     RCLCPP_ERROR(this->get_logger(), "Could not find label file");
@@ -189,13 +190,9 @@ void TrtYoloXNode::onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg)
         .toImageMsg();
     out_mask_msg->header = msg->header;
 
-    std::vector<std::pair<uint8_t, int>> compressed_data = perception_utils::runLengthEncoder(mask);
-    int step = sizeof(uint8_t) + sizeof(int);
-    out_mask_msg->data.resize(static_cast<int>(compressed_data.size()) * step);
-    for (size_t i = 0; i < compressed_data.size(); ++i) {
-      std::memcpy(&out_mask_msg->data[i * step], &compressed_data.at(i).first, sizeof(uint8_t));
-      std::memcpy(&out_mask_msg->data[i * step + 1], &compressed_data.at(i).second, sizeof(int));
-    }
+    std::vector<uint8_t> compressed_data =
+      perception_utils::runLengthEncoder(mask, semseg_label_list_);
+    out_mask_msg->data = compressed_data;
     mask_pub_.publish(out_mask_msg);
   }
   image_pub_.publish(in_image_ptr->toImageMsg());
@@ -292,6 +289,23 @@ void TrtYoloXNode::overlapSegmentByRoi(
     cv::Size(roi_width, roi_height), mask.type(), static_cast<uint8_t>(seg_class_index));
   replace_roi.copyTo(mask.colRange(roi_x_offset, roi_x_offset + roi_width)
                        .rowRange(roi_y_offset, roi_y_offset + roi_height));
+}
+void TrtYoloXNode::getLabelNames(
+  const std::string & csv_filepath, std::vector<std::string> & label_names)
+{
+  label_names.clear();
+  std::ifstream file(csv_filepath);
+  if (!file.is_open()) {
+    throw std::runtime_error("Cannot open file: " + csv_filepath);
+  }
+  std::string line;
+  std::getline(file, line);  // skip the header line
+  while (std::getline(file, line)) {
+    std::istringstream ss(line);
+    std::string id, name, r, g, b;
+    ss >> id >> name >> r >> g >> b;
+    label_names.push_back(name);
+  }
 }
 
 }  // namespace autoware::tensorrt_yolox

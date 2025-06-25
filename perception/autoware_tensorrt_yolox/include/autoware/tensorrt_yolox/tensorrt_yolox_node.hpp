@@ -80,6 +80,7 @@ private:
   void overlapSegmentByRoi(
     const tensorrt_yolox::Object & object, cv::Mat & mask, const int width, const int height);
   int mapRoiLabel2SegLabel(const int32_t roi_label_index);
+  void getLabelNames(const std::string & csv_filepath, std::vector<std::string> & label_names);
   image_transport::Publisher image_pub_;
   image_transport::Publisher mask_pub_;
 
@@ -96,6 +97,7 @@ private:
   bool is_roi_overlap_segment_;
   bool is_publish_color_mask_;
   float overlap_roi_score_threshold_;
+  std::vector<std::string> semseg_label_list_;
   // TODO(badai-nguyen): change to function
   std::map<std::string, int> remap_roi_to_semantic_ = {
     {"UNKNOWN", 3},     // other
