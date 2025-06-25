@@ -48,15 +48,15 @@ TEST(UtilsTest, runLengthEncoderDecoderTest)
     }
   }
   // Compress the image
-  std::vector<std::pair<uint8_t, int>> compressed_data = perception_utils::runLengthEncoder(image);
-  int step = sizeof(uint8_t) + sizeof(int);
-  std::vector<uint8_t> data(compressed_data.size() * step);
-  for (size_t i = 0; i < compressed_data.size(); ++i) {
-    std::memcpy(&data[i * step], &compressed_data.at(i).first, sizeof(uint8_t));
-    std::memcpy(&data[i * step + sizeof(uint8_t)], &compressed_data.at(i).second, sizeof(int));
-  }
+  std::vector<std::string> encoded_label_names = {
+    "class_0", "class_1", "class_2",  "class_3",  "class_4",  "class_5",  "class_6",  "class_7",
+    "class_8", "class_9", "class_10", "class_11", "class_12", "class_13", "class_14", "class_15"};
+  std::vector<uint8_t> compressed_data =
+    perception_utils::runLengthEncoder(image, encoded_label_names);
   // Decompress the image
-  cv::Mat decoded_image = perception_utils::runLengthDecoder(data, height, width);
+  std::vector<std::string> decoded_label_names;
+  cv::Mat decoded_image =
+    perception_utils::runLengthDecoder(compressed_data, height, width, decoded_label_names);
   // Compare the original image and the decoded image
   ASSERT_EQ(image.rows, decoded_image.rows);
   ASSERT_EQ(image.cols, decoded_image.cols);

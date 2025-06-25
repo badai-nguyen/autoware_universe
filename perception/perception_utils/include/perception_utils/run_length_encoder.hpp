@@ -22,8 +22,17 @@
 
 namespace perception_utils
 {
-std::vector<std::pair<uint8_t, int>> runLengthEncoder(const cv::Mat & mask);
-cv::Mat runLengthDecoder(const std::vector<uint8_t> & rle_data, const int rows, const int cols);
+struct RLEEntry {
+  uint8_t label_value;
+  int run_length;
+  std::string label_name;
+};
+
+std::vector<uint8_t> runLengthEncoder(const cv::Mat & mask, 
+                                      const std::vector<std::string> & label_names);
+std::vector<uint8_t> serializeRLEEntry(const std::vector<RLEEntry> & rle_data);
+cv::Mat runLengthDecoder(const std::vector<uint8_t> & rle_data, const int rows, const int cols, 
+                         std::vector<std::string> & label_names);
 }  // namespace perception_utils
 
 #endif  // PERCEPTION_UTILS__RUN_LENGTH_ENCODER_HPP_
