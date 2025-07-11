@@ -241,6 +241,37 @@ Eigen::Vector3d computeFaceNormal(const std::array<Eigen::Vector3d, 3> & triangl
   return normal.normalized();
 }
 
+double interpolateZOnTriangle(
+  const Eigen::Vector3d & point_xy,  // (x, y, 0)
+  const std::array<Eigen::Vector3d, 3> & tri)
+{
+  const Eigen::Vector3d & p0 = tri[0];
+
+  Eigen::Vector3d normal = computeFaceNormal(tri);
+
+  double x = point_xy.x();
+  double y = point_xy.y();
+  double z = p0.z() - (normal.x() * (x - p0.x()) + normal.y() * (y - p0.y())) / normal.z();
+
+  return z;
+}
+
+double areaOfTriangle(
+  const Eigen::Vector3d & A, const Eigen::Vector3d & B, const Eigen::Vector3d & C)
+{
+  return std::asb(A[0] * (B[1] - C[1]) + B[0](C[1] - A[1]) + C[0] * (A[1] - B[1])) / 2.0;
+}
+bool isPointInsideTriangle(const Eigen::Vector3d & point, const std::vector<Eigen::Vector3d> & tri)
+{
+  const auto a = tri[0];
+  const auto b = tri[1];
+  const auto c = tri[2];
+  const auto area_abc = areaOfTriangle(a, b, c);
+  const auto area_abp = areaOfTriangle(a, b, point);
+  const auto area_acp = areaOfTriangle(a, c, point);
+  const auto area_bcp = areaOfTriangle(b, c, point);
+  return abs((area_abp + area_acp + area_bcp) - area_abc) < 1e-6;
+}
 // checks whether a point is located above the lanelet triangle plane
 // that is closest in the perpendicular direction
 bool isPointAboveLaneletMesh(
@@ -250,65 +281,35 @@ bool isPointAboveLaneletMesh(
   const TriangleMesh mesh = createTriangleMeshFromLanelet(lanelet);
 
   if (mesh.empty()) return true;
-
-  // for the query point
-  double query_point_min_abs_dist = std::numeric_limits<double>::infinity();
-  // for top and bottom point
-  double top_min_dist = std::numeric_limits<double>::infinity();
-  double top_min_abs_dist = std::numeric_limits<double>::infinity();
-  double bottom_min_dist = std::numeric_limits<double>::infinity();
-  double bottom_min_abs_dist = std::numeric_limits<double>::infinity();
+  double object_top = point.z() + offset;
+  double object_bottom = point.z() - offset;
+  double max_z = -std::numeric_limits<double>::infinity();
+  double min_z = std::numeric_limits<double>::infinity();
 
   // search the most nearest surface from the query point
   for (const auto & tri : mesh) {
-    const Eigen::Vector3d plane_normal_vec = computeFaceNormal(tri);
-
-    // std::cos(M_PI / 3.0) -> 0.5;
-    // in some environment, or more recent c++, it can be constexpr
-    constexpr double cos_threshold = 0.5;
-    const double cos_of_normal_and_z = plane_normal_vec.dot(Eigen::Vector3d::UnitZ());
-
-    // if angle is too steep, consider as above for safety
-    if (cos_of_normal_and_z < cos_threshold) {
+    Eigen::Vector3d proj_point;
+    proj_point.x() = point.x();
+    proj_point.y() = point.y();
+    proj_point.z() = interpolateZOnTriangle(proj_point, tri);
+    if (!isPointInsideTriangle(point, tri)) {
+      continue;
+    }
+    max_z = proj_point.z() + max_distance;
+    min_z = proj_point.z() + min_distance;
+    if (
+      (object_bottom > min_z && object_bottom < max_z) ||
+      (object_top > min_z && object_top < max_z)) {
       return true;
     }
-
-    Eigen::Vector3d vec_to_point = point - tri[0];
-    double signed_dist = plane_normal_vec.dot(vec_to_point);
-
-    double abs_dist = std::abs(signed_dist);
-    if (abs_dist < query_point_min_abs_dist) {
-      query_point_min_abs_dist = abs_dist;
-
-      // check top side
-      vec_to_point = (point + offset * plane_normal_vec) - tri[0];
-      signed_dist = plane_normal_vec.dot(vec_to_point);
-
-      abs_dist = std::abs(signed_dist);
-      if (abs_dist < top_min_abs_dist) {
-        top_min_dist = signed_dist;
-        top_min_abs_dist = abs_dist;
-      }
-
-      // check bottom side
-      vec_to_point = (point - offset * plane_normal_vec) - tri[0];
-      signed_dist = plane_normal_vec.dot(vec_to_point);
-
-      abs_dist = std::abs(signed_dist);
-      if (abs_dist < bottom_min_abs_dist) {
-        bottom_min_dist = signed_dist;
-        bottom_min_abs_dist = abs_dist;
-      }
-    }
   }
-
-  // if at least one point is within the range, we consider it to be in the range
-  if (
-    (min_distance <= top_min_dist && top_min_dist <= max_distance) ||
-    (min_distance <= bottom_min_dist && bottom_min_dist <= max_distance))
-    return true;
-  else
+  if (max_z > min_z) {
+    // found the triangle the projection point is belong to but out of range
     return false;
+  }
+  // No triangle that proj point is belong to
+  // TODO(badai-nguyen): add checking closest triangle
+  return true;
 }
 
 void ObjectLaneletFilterNode::mapCallback(
