@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.14)
-project(autoware_cuda_pointcloud_preprocessor)
+cmake_minimum_required(VERSION 3.8)
+project(autoware_ground_segmentation_cuda)
 
 find_package(ament_cmake_auto REQUIRED)
 find_package(CUDA)
@@ -7,7 +7,7 @@ find_package(agnocastlib)
 find_package(autoware_vehicle_info_utils REQUIRED)
 
 if(NOT ${CUDA_FOUND})
-  message(WARNING "cuda was not found, so the autoware_cuda_pointcloud_preprocessor package will not be built.")
+  message(WARNING "cuda was not found, so the autoware_ground_segmentation_cuda package will not be built.")
   return()
 elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS} "-g -G")
@@ -57,27 +57,19 @@ list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=compute_89")
 # list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=sm_120")
 
 ################################################################################
-### cuda_pointcloud_preprocessor ###
-cuda_add_library(cuda_pointcloud_preprocessor_lib SHARED
-  src/cuda_concatenate_data/cuda_combine_cloud_handler.cpp
-  src/cuda_concatenate_data/cuda_combine_cloud_handler_kernel.cu
-  src/cuda_concatenate_data/cuda_cloud_collector.cpp
-  src/cuda_concatenate_data/cuda_collector_matching_strategy.cpp
-  src/cuda_pointcloud_preprocessor/cuda_pointcloud_preprocessor.cu
-  src/cuda_pointcloud_preprocessor/common_kernels.cu
-  src/cuda_pointcloud_preprocessor/organize_kernels.cu
-  src/cuda_pointcloud_preprocessor/outlier_kernels.cu
-  src/cuda_pointcloud_preprocessor/undistort_kernels.cu
-  src/cuda_downsample_filter/cuda_voxel_grid_downsample_filter.cu
-  src/cuda_ground_segmentation/cuda_scan_ground_segmentation_filter.cu
+### cuda_ground_segmentation ###
+cuda_add_library(cuda_ground_segmentation_lib SHARED
+  src/cuda_scan_ground_segmentation/cuda_scan_ground_segmentation_filter.cu
 )
 
-target_link_libraries(cuda_pointcloud_preprocessor_lib
+target_link_libraries(cuda_ground_segmentation_lib
   ${autoware_pointcloud_preprocessor_TARGETS}
+  ${autoware_cuda_pointcloud_preprocessor_TARGETS}
 )
 
-target_include_directories(cuda_pointcloud_preprocessor_lib SYSTEM PRIVATE
+target_include_directories(cuda_ground_segmentation_lib SYSTEM PRIVATE
   ${autoware_pointcloud_preprocessor_INCLUDE_DIRS}
+  ${autoware_cuda_pointcloud_preprocessor_INCLUDE_DIRS}
   ${autoware_point_types_INCLUDE_DIRS}
   ${cuda_blackboard_INCLUDE_DIRS}
   ${diagnostic_msgs_INCLUDE_DIRS}
@@ -93,50 +85,30 @@ target_include_directories(cuda_pointcloud_preprocessor_lib SYSTEM PRIVATE
 )
 
 if(USE_AGNOCAST)
-    target_include_directories(cuda_pointcloud_preprocessor_lib SYSTEM PRIVATE
+    target_include_directories(cuda_ground_segmentation_lib SYSTEM PRIVATE
         ${autoware_agnocast_wrapper_INCLUDE_DIRS}
         ${agnocastlib_INCLUDE_DIRS}
     )
-    target_link_libraries(cuda_pointcloud_preprocessor_lib
+    target_link_libraries(cuda_ground_segmentation_lib
         ${agnocastlib_LIBRARIES}
     )
 endif()
 
 
 # Targets
-ament_auto_add_library(cuda_pointcloud_preprocessor SHARED
-  src/cuda_concatenate_data/cuda_concatenate_and_time_sync_node.cpp
-  src/cuda_pointcloud_preprocessor/cuda_pointcloud_preprocessor_node.cpp
-  src/cuda_downsample_filter/cuda_voxel_grid_downsample_filter_node.cpp
-  src/cuda_ground_segmentation/cuda_scan_ground_segmentation_filter_node.cpp
+ament_auto_add_library(cuda_ground_segmentation SHARED
+  src/cuda_scan_ground_segmentation/cuda_scan_ground_segmentation_filter_node.cpp
 )
 
-target_link_libraries(cuda_pointcloud_preprocessor
+target_link_libraries(cuda_ground_segmentation
   ${CUDA_LIBRARIES}
   ${diagnostic_msgs_LIBRARIES}
-  cuda_pointcloud_preprocessor_lib
-)
-
-# ========== Concatenate and Sync data ==========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointCloudConcatenateDataSynchronizerComponent"
-  EXECUTABLE cuda_concatenate_and_time_sync_node)
-
-# ========== Pointcloud preprocessor ==========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointcloudPreprocessorNode"
-  EXECUTABLE cuda_pointcloud_preprocessor_node
-)
-
-# ========== VoxelGrid downsample filter ==========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaVoxelGridDownsampleFilterNode"
-  EXECUTABLE cuda_voxel_grid_downsample_filter_node
+  cuda_ground_segmentation_lib
 )
 
 #=========== ScanGround Segmentation filter ========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaScanGroundSegmentationFilterNode"
+rclcpp_components_register_node(cuda_ground_segmentation
+  PLUGIN "autoware::cuda_ground_segmentation::CudaScanGroundSegmentationFilterNode"
   EXECUTABLE cuda_scan_ground_segmentation_filter_node)
 
 ################################################################################
@@ -146,7 +118,7 @@ install(DIRECTORY launch config
 )
 
 install(
-  TARGETS cuda_pointcloud_preprocessor_lib
+  TARGETS cuda_ground_segmentation_lib
   LIBRARY DESTINATION lib
 )
 
