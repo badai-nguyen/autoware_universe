@@ -50,10 +50,9 @@ __global__ void scatterKernel(
 }  // namespace
 
 CudaScanGroundSegmentationFilter::CudaScanGroundSegmentationFilter(
-  const double height_threshold, const int64_t max_mem_pool_size_in_byte)
+  const FilterParameters & filter_parameters, const int64_t max_mem_pool_size_in_byte)
+: filter_parameters_(filter_parameters)
 {
-  height_threshold_ = height_threshold;
-
   CHECK_CUDA_ERROR(cudaStreamCreate(&ground_segment_stream_));
 
   {
@@ -96,8 +95,6 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   filtered_output->row_step = static_cast<uint32_t>(num_output_points * sizeof(PointTypeStruct));
   filtered_output->is_dense = input_points->is_dense;
   filtered_output->fields = input_points->fields;
-
-  // CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
 
   return filtered_output;
 }
@@ -148,7 +145,7 @@ void CudaScanGroundSegmentationFilter::getObstaclePointcloud(
   dim3 grid_dim((number_input_points_ + block_dim.x - 1) / block_dim.x);
 
   markValidKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
-    input_points_dev, n, height_threshold_, flag_dev);
+    input_points_dev, n, filter_parameters_.non_ground_height_threshold, flag_dev);
 
   cub::DeviceScan::ExclusiveSum(
     temp_storage, temp_storage_bytes, flag_dev, indices_dev, static_cast<int>(n),

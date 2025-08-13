@@ -27,7 +27,6 @@ private:
 
   // Cuda Ground Segmentation Filter
   std::unique_ptr<CudaScanGroundSegmentationFilter> cuda_ground_segmentation_filter_{};
-  float height_threshold_;
 };
 
 }  // namespace autoware::cuda_pointcloud_preprocessor

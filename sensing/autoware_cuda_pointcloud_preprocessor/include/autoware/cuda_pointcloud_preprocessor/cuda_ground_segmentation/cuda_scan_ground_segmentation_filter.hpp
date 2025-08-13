@@ -4,6 +4,7 @@
 
 #include <autoware/cuda_pointcloud_preprocessor/point_types.hpp>
 #include <autoware/cuda_utils/cuda_check_error.hpp>
+#include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
 #include <cuda_blackboard/cuda_unique_ptr.hpp>
 
@@ -15,6 +16,8 @@
 
 namespace autoware::cuda_pointcloud_preprocessor
 {
+
+using autoware::vehicle_info_utils::VehicleInfo;
 struct PointTypeStruct
 {
   float x;
@@ -25,21 +28,62 @@ struct PointTypeStruct
   std::uint16_t channel;
 };
 
+// structure to hold parameter values
+struct FilterParameters
+{
+  uint16_t gnd_grid_continual_thresh;
+  float non_ground_height_threshold;
+  float low_priority_region_x;
+  float center_pcl_shift{0.0f};  // virtual center of pcl to center mass
+
+  // common parameters
+  float radial_divider_angle_rad;  // distance in rads between dividers
+  size_t radial_dividers_num;
+  VehicleInfo vehicle_info;
+
+  // common thresholds
+  float global_slope_max_angle_rad;  // radians
+  float local_slope_max_angle_rad;   // radians
+  float global_slope_max_ratio;
+  float local_slope_max_ratio;
+  float split_points_distance_tolerance;  // distance in meters between concentric divisions
+
+  // non-grid mode parameters
+  bool use_virtual_ground_point;
+  float split_height_distance;  // minimum height threshold regardless the slope,
+                                // useful for close points
+
+  // grid mode parameters
+  bool use_recheck_ground_cluster;  // to enable recheck ground cluster
+  float recheck_start_distance;     // distance to start rechecking ground cluster
+  bool use_lowest_point;  // to select lowest point for reference in recheck ground cluster,
+                          // otherwise select middle point
+  float detection_range_z_max;
+
+  // grid parameters
+  float grid_size_m;
+  float grid_mode_switch_radius;  // non linear grid size switching distance
+  uint16_t gnd_grid_buffer_size;
+  float virtual_lidar_z;
+};
+
 class CudaScanGroundSegmentationFilter
 {
 public:
   explicit CudaScanGroundSegmentationFilter(
-    const double height_threshold, const int64_t max_mem_pool_size_in_byte);
+    const FilterParameters & filter_parameters, const int64_t max_mem_pool_size_in_byte);
   ~CudaScanGroundSegmentationFilter() = default;
 
   // Method to process the point cloud data and filter ground points
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> classifyPointcloud(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points);
 
-  float height_threshold_;
   size_t number_input_points_;
   size_t input_pointcloud_step_;
   size_t input_xyzi_offset_[4];
+
+  // Parameters
+  FilterParameters filter_parameters_;
 
 private:
   // Internal methods for ground segmentation logic
