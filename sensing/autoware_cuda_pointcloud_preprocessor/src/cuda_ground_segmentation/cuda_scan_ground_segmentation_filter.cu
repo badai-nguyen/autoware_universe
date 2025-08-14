@@ -218,8 +218,8 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
 
   // get maximum of num_points along all cells in cells_centroid_list_dev, on device
   // cub::DeviceScan::Ex
-  int * num_points_dev;     // array of num_points for each cell
-  int * max_num_point_dev;  // storage for maximum number of points along all cells
+  int * num_points_per_cell_dev;  // array of num_points for each cell
+  int * max_num_point_dev;        // storage for maximum number of points along all cells
   int max_num_cells = filter_parameters_.max_num_cells_per_sector * filter_parameters_.num_sectors;
 
   void * d_temp_storage = nullptr;
@@ -227,36 +227,39 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
 
   int threads = filter_parameters_.num_sectors;
   int blocks = (max_num_cells + threads - 1) / threads;
-  CHECK_CUDA_ERROR(cudaMalloc(&num_points_dev, max_num_cells * sizeof(int)));
+  CHECK_CUDA_ERROR(cudaMalloc(&num_points_per_cell_dev, max_num_cells * sizeof(int)));
   CHECK_CUDA_ERROR(cudaMalloc(&max_num_point_dev, sizeof(int)));
 
   getCellNumPointsKernel<<<blocks, threads, 0, ground_segment_stream_>>>(
-    cells_centroid_list_dev, max_num_cells, num_points_dev);
+    cells_centroid_list_dev, max_num_cells, num_points_per_cell_dev);
 
   cub::DeviceReduce::Max(
-    d_temp_storage, temp_storage_bytes, num_points_dev, max_num_point_dev, max_num_cells,
+    d_temp_storage, temp_storage_bytes, num_points_per_cell_dev, max_num_point_dev, max_num_cells,
     ground_segment_stream_);
   CHECK_CUDA_ERROR(cudaMalloc(&d_temp_storage, temp_storage_bytes));
 
   cub::DeviceReduce::Max(
-    d_temp_storage, temp_storage_bytes, num_points_dev, max_num_point_dev, max_num_cells,
+    d_temp_storage, temp_storage_bytes, num_points_per_cell_dev, max_num_point_dev, max_num_cells,
     ground_segment_stream_);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
 
-  int max_num_points_host = 0;
-  CHECK_CUDA_ERROR(
-    cudaMemcpy(&max_num_points_host, max_num_point_dev, sizeof(int), cudaMemcpyDeviceToHost));
+  int max_num_points_per_cell_host = 0;
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    &max_num_points_per_cell_host, max_num_point_dev, sizeof(int), cudaMemcpyDeviceToHost));
   CHECK_CUDA_ERROR(cudaFree(d_temp_storage));
   CHECK_CUDA_ERROR(cudaFree(max_num_point_dev));
-  CHECK_CUDA_ERROR(cudaFree(num_points_dev));
 
   // allocated Cells memory for splitting pointcloud
 
   auto * classified_points_dev =
-    allocateBufferFromPool<ClassifiedPointTypeStruct>(max_num_cells * max_num_points_host);
+    allocateBufferFromPool<ClassifiedPointTypeStruct>(max_num_cells * max_num_points_per_cell_host);
+
   splitPointToCells(
-    input_points, cells_centroid_list_dev, max_num_cells, max_num_points_host,
+    input_points, cells_centroid_list_dev, max_num_cells, max_num_points_per_cell_host,
     classified_points_dev);
+
+  
+  CHECK_CUDA_ERROR(cudaFree(num_points_per_cell_dev));
 
   auto filtered_output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   filtered_output->data = cuda_blackboard::make_unique<std::uint8_t[]>(max_bytes);
@@ -340,13 +343,16 @@ void CudaScanGroundSegmentationFilter::scanObstaclePoints(
   CellCentroid * cells_centroid_list_dev)
 {
   // Implementation of the function to scan obstacle points
-  if
+  if (number_input_points_ == 0) {
+    *num_output_points = 0;
+    return;  // No points to process
+  }
 }
 
 void CudaScanGroundSegmentationFilter::splitPointToCells(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
   const CellCentroid * cells_centroid_list_dev, const int max_num_cells,
-  const int max_num_points_host, ClassifiedPointTypeStruct * classified_points_dev)
+  const int max_num_points_per_cell_host, ClassifiedPointTypeStruct * classified_points_dev)
 {
   // implementation of the function to split point cloud into cells
   if (number_input_points_ == 0) {
@@ -363,8 +369,10 @@ void CudaScanGroundSegmentationFilter::splitPointToCells(
 
   splitPointToCellsKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
     input_points_dev, number_input_points_, center_x, center_y, filter_parameters_.sector_angle_rad,
-    max_radius, filter_parameters_.max_num_cells_per_sector, max_num_cells, max_num_points_host,
-    filter_parameters_.cell_divider_size_m, cells_centroid_list_dev, classified_points_dev);
+    max_radius, filter_parameters_.max_num_cells_per_sector, max_num_cells,
+    max_num_points_per_cell_host, filter_parameters_.cell_divider_size_m, cells_centroid_list_dev,
+    classified_points_dev);
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
 }
 void CudaScanGroundSegmentationFilter::getObstaclePointcloud(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
