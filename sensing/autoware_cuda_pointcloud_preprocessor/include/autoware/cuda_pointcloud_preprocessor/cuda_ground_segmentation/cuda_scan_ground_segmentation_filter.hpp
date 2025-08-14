@@ -72,9 +72,22 @@ struct CellCentroid
   float ground_reference_z;
   float ground_reference_x;
   float ground_reference_y;
-  std::vector<size_t> point_indices;
   size_t num_points;
   uint16_t cell_id;  // cell_id = sector_id * number_cells_per_sector + grid_index
+  // initialize constructor
+  CellCentroid()
+  : radius_avg(0.0f),
+    height_avg(0.0f),
+    height_max(0.0f),
+    height_min(0.0f),
+    num_ground_points(0),
+    ground_reference_z(0.0f),
+    ground_reference_x(0.0f),
+    ground_reference_y(0.0f),
+    num_points(0),
+    cell_id(0)
+  {
+  }
 };
 
 // structure to hold parameter values
@@ -149,6 +162,19 @@ private:
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     const CellCentroid * cells_centroid_list_dev, const int max_num_cells,
     const int max_num_points_host, ClassifiedPointTypeStruct * classified_points_dev);
+
+  void sortPointsInCells(
+    const int * num_points_per_cell_dev, ClassifiedPointTypeStruct * classified_points_dev);
+  void scanPerSectorGroundReference(
+    ClassifiedPointTypeStruct * classified_points_dev, const int * num_points_per_cell_dev,
+    CellCentroid * cells_centroid_list_dev, const int max_num_points_per_cell);
+
+  /*
+   * Extract obstacle points from classified_points_dev
+   */
+  void extractNonGroundPoints(
+    ClassifiedPointTypeStruct * classified_points_dev, PointTypeStruct * output_points_dev,
+    size_t * num_output_points);
 
   void getObstaclePointcloud(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,

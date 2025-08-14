@@ -57,8 +57,9 @@ __global__ void splitPointToCellsKernel(
   const float angle = atan2(dy, dx);  // replace with approximate atan
   // Determine the radial division index
   auto division_sector_index = static_cast<int>((angle + M_PI) * inv_sector_angle_rad);
-  auto cell_index_in_sector = static_cast<int>(radius / cell_size_m);
-  auto cell_id = division_sector_index * max_number_cels_per_sector + cell_index_in_sector;
+  auto cell_index_in_sector_in_sector = static_cast<int>(radius / cell_size_m);
+  auto cell_id =
+    division_sector_index * max_number_cels_per_sector + cell_index_in_sector_in_sector;
   if (cell_id < 0 || cell_id >= max_num_cells) {
     return;  // Out of bounds
   }
@@ -79,6 +80,161 @@ __global__ void splitPointToCellsKernel(
   classified_points_dev[classified_point_index].origin_index =
     idx;  // index in the original point cloud
   // Update the cell centroid
+}
+
+__global__ void scanPerSectorGroundReferenceKernel(
+  ClassifiedPointTypeStruct * classified_points_dev, const int num_sectors,
+  const int * num_points_per_cell_dev, CellCentroid * cells_centroid_list_dev,
+  int max_num_cells_per_sector, const int max_num_points_per_cell,
+  const float non_ground_height_threshold, const float non_ground_detection_range)
+{
+  // Implementation of the kernel
+  // scan in each sector from cell_index_in_sector = 0 to max_num_cells_per_sector
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_sectors) {
+    return;  // Out of bounds
+  }
+  // For each sector, find the ground reference points if points exist
+  // otherwise, use the previous sector ground reference points
+  CellCentroid * prev_cell_centroid = nullptr;
+  // initialize the previous cell centroid
+  cudaMalloc(&prev_cell_centroid, sizeof(CellCentroid));
+  prev_cell_centroid->ground_reference_z = 0.0f;
+  prev_cell_centroid->ground_reference_x = 0.0f;
+  prev_cell_centroid->ground_reference_y = 0.0f;
+  prev_cell_centroid->num_ground_points = 0;
+  prev_cell_centroid->num_points = 0;
+  prev_cell_centroid->cell_id = 0;
+
+  bool sector_initialized = false;
+  for (int cell_index_in_sector = 0; cell_index_in_sector < max_num_cells_per_sector;
+       ++cell_index_in_sector) {
+    auto cell_id = idx * max_num_cells_per_sector + cell_index_in_sector;
+    auto num_points_in_cell = num_points_per_cell_dev[cell_id];
+    auto & current_cell_centroid = cells_centroid_list_dev[cell_id];
+    if (!sector_initialized) {
+      if (num_points_in_cell <= 0) {
+        // No points in this cell, skip
+        continue;
+      }
+      // the first cell in sector has points
+      sector_initialized = true;
+      for (int point_index_in_cell = 0; point_index_in_cell < num_points_in_cell;
+           ++point_index_in_cell) {
+        auto & point =
+          classified_points_dev[cell_id * max_num_points_per_cell + point_index_in_cell];
+        if (point.z > non_ground_height_threshold + prev_cell_centroid->ground_reference_z) {
+          point.type = PointType::NON_GROUND;
+          continue;
+        }
+        if (
+          point.z > prev_cell_centroid->ground_reference_z + non_ground_detection_range ||
+          point.z < prev_cell_centroid->ground_reference_z - non_ground_height_threshold) {
+          point.type = PointType::OUT_OF_RANGE;
+          continue;
+        }
+
+        point.type = PointType::GROUND;
+        current_cell_centroid.ground_reference_z =
+          current_cell_centroid.ground_reference_z * current_cell_centroid.num_ground_points +
+          point.z;
+        current_cell_centroid.num_ground_points++;
+        current_cell_centroid.ground_reference_z =
+          current_cell_centroid.ground_reference_z / current_cell_centroid.num_ground_points;
+
+        current_cell_centroid.ground_reference_x =
+          current_cell_centroid.ground_reference_x * current_cell_centroid.num_ground_points +
+          point.x;
+        current_cell_centroid.ground_reference_x =
+          current_cell_centroid.ground_reference_x / current_cell_centroid.num_ground_points;
+
+        current_cell_centroid.ground_reference_y =
+          current_cell_centroid.ground_reference_y * current_cell_centroid.num_ground_points +
+          point.y;
+        current_cell_centroid.ground_reference_y =
+          current_cell_centroid.ground_reference_y / current_cell_centroid.num_ground_points;
+      }
+      // update previous cell centroid
+      if (current_cell_centroid.num_ground_points > 0) {
+        prev_cell_centroid->ground_reference_z = current_cell_centroid.ground_reference_z;
+        prev_cell_centroid->ground_reference_x = current_cell_centroid.ground_reference_x;
+        prev_cell_centroid->ground_reference_y = current_cell_centroid.ground_reference_y;
+      }
+    } else {
+      // use the previous sector ground reference points
+      // check number of points in the cell
+      if (num_points_in_cell <= 0) {
+        // No points in this cell, update previous cell centroid
+        continue;
+      }
+      for (int point_index_in_cell = 0; point_index_in_cell < num_points_in_cell;
+           ++point_index_in_cell) {
+        auto & point =
+          classified_points_dev[cell_id * max_num_points_per_cell + point_index_in_cell];
+        // TODO: add other conditions for non-ground points
+        if (point.z > non_ground_height_threshold + prev_cell_centroid->ground_reference_z) {
+          point.type = PointType::NON_GROUND;
+          continue;
+        }
+        if (
+          point.z > prev_cell_centroid->ground_reference_z + non_ground_detection_range ||
+          point.z < prev_cell_centroid->ground_reference_z - non_ground_height_threshold) {
+          point.type = PointType::OUT_OF_RANGE;
+          continue;
+        }
+        point.type = PointType::GROUND;
+        current_cell_centroid.ground_reference_z =
+          current_cell_centroid.ground_reference_z * current_cell_centroid.num_ground_points +
+          point.z;
+        current_cell_centroid.num_ground_points++;
+        current_cell_centroid.ground_reference_z =
+          current_cell_centroid.ground_reference_z / current_cell_centroid.num_ground_points;
+
+        current_cell_centroid.ground_reference_x =
+          current_cell_centroid.ground_reference_x * current_cell_centroid.num_ground_points +
+          point.x;
+        current_cell_centroid.ground_reference_x =
+          current_cell_centroid.ground_reference_x / current_cell_centroid.num_ground_points;
+
+        current_cell_centroid.ground_reference_y =
+          current_cell_centroid.ground_reference_y * current_cell_centroid.num_ground_points +
+          point.y;
+        current_cell_centroid.ground_reference_y =
+          current_cell_centroid.ground_reference_y / current_cell_centroid.num_ground_points;
+      }
+      if (current_cell_centroid.num_ground_points > 0) {
+        // update previous cell centroid
+        prev_cell_centroid->ground_reference_z = current_cell_centroid.ground_reference_z;
+        prev_cell_centroid->ground_reference_x = current_cell_centroid.ground_reference_x;
+        prev_cell_centroid->ground_reference_y = current_cell_centroid.ground_reference_y;
+      } else {
+        // if no ground points in the cell, use previous cell centroid
+        current_cell_centroid.ground_reference_z = prev_cell_centroid->ground_reference_z;
+        current_cell_centroid.ground_reference_x = prev_cell_centroid->ground_reference_x;
+        current_cell_centroid.ground_reference_y = prev_cell_centroid->ground_reference_y;
+      }
+    }
+    // Get the cell centroid
+  }
+}
+
+__global__ void sortPointsInCellsKernel(
+  const int * __restrict__ num_points_per_cell_dev,
+  ClassifiedPointTypeStruct * classified_points_dev, const int max_num_cells,
+  const int max_num_points_per_cell)
+{
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= max_num_cells) {
+    return;  // Out of bounds
+  }
+
+  auto * cell_points = classified_points_dev + idx * max_num_points_per_cell;
+  int num_points_in_cell = num_points_per_cell_dev[idx];
+  if (num_points_in_cell <= 1) {
+    return;  // No need to sort if there is 0 or 1 point in the cell
+  }
+  // Sort the points in the cell by radius using a cub::DeviceRadixSort
+  // the points are located in cell_points, and the number of points is num_points_in_cell
 }
 
 __global__ void CellsCentroidInitializeKernel(
@@ -258,8 +414,15 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
     input_points, cells_centroid_list_dev, max_num_cells, max_num_points_per_cell_host,
     classified_points_dev);
 
-  
-  CHECK_CUDA_ERROR(cudaFree(num_points_per_cell_dev));
+  // sort classified point by radius in each cell
+  // The real existing points in each cell are located in cells_centroid_list_dev's num_points
+  // sortPointsInCells(num_points_per_cell_dev, classified_points_dev);
+
+  // classify points without sorting
+  // only based on ground reference points of previous cell centroid
+  scanPerSectorGroundReference(
+    classified_points_dev, num_points_per_cell_dev, cells_centroid_list_dev,
+    max_num_points_per_cell_host);
 
   auto filtered_output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   filtered_output->data = cuda_blackboard::make_unique<std::uint8_t[]>(max_bytes);
@@ -270,7 +433,15 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   // getObstaclePointcloud(input_points, output_points_dev, &num_output_points);
 
   // classify points based on ground reference points of previous cell centroid
-  scanObstaclePoints(input_points, output_points_dev, &num_output_points, cells_centroid_list_dev);
+  // scanObstaclePoints(input_points, output_points_dev, &num_output_points,
+  // cells_centroid_list_dev);
+
+  // Extract obstacle points from classified_points_dev
+  extractNonGroundPoints(classified_points_dev, output_points_dev, &num_output_points);
+
+  // mark valid points based on height threshold
+
+  CHECK_CUDA_ERROR(cudaFree(num_points_per_cell_dev));
 
   filtered_output->header = input_points->header;
   filtered_output->height = 1;  // Set height to 1 for unorganized point cloud
@@ -374,6 +545,51 @@ void CudaScanGroundSegmentationFilter::splitPointToCells(
     classified_points_dev);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
 }
+
+// ============= Sort points in each cell by radius =============
+void CudaScanGroundSegmentationFilter::sortPointsInCells(
+  const int * num_points_per_cell_dev, ClassifiedPointTypeStruct * classified_points_dev)
+{
+  (void)num_points_per_cell_dev;
+  (void)classified_points_dev;
+}
+
+// ============ Scan per sector to get ground reference =============
+void CudaScanGroundSegmentationFilter::scanPerSectorGroundReference(
+  ClassifiedPointTypeStruct * classified_points_dev, const int * num_points_per_cell_dev,
+  CellCentroid * cells_centroid_list_dev, const int max_num_points_per_cell)
+{
+  const int num_sectors = filter_parameters_.num_sectors;
+  const int max_num_cells_per_sector = filter_parameters_.max_num_cells_per_sector;
+  const float non_ground_height_threshold = filter_parameters_.non_ground_height_threshold;
+  const float non_ground_detection_range = filter_parameters_.detection_range_z_max;
+
+  dim3 block_dim(num_sectors);
+  dim3 grid_dim((num_sectors + block_dim.x - 1) / block_dim.x);
+  // Launch the kernel to scan for ground points in each sector
+  scanPerSectorGroundReferenceKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
+    classified_points_dev, num_sectors, num_points_per_cell_dev, cells_centroid_list_dev,
+    max_num_cells_per_sector, max_num_points_per_cell, non_ground_height_threshold,
+    non_ground_detection_range);
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
+}
+
+// ============= Extract non-ground points =============
+void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
+  ClassifiedPointTypeStruct * classified_points_dev, PointTypeStruct * output_points_dev,
+  size_t * num_output_points)
+{
+  if (number_input_points_ == 0) {
+    *num_output_points = 0;
+    return;  // No points to process
+  }
+
+  // Implement the logic to extract non-ground points from classified_points_dev
+  // and fill output_points_dev with the coordinates of non-ground points.
+  // This is a placeholder for the actual CUDA kernel call.
+}
+
+// ============= Get obstacle point cloud =============
 void CudaScanGroundSegmentationFilter::getObstaclePointcloud(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
   PointTypeStruct * output_points_dev, size_t * num_output_points_host)
