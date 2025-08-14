@@ -20,6 +20,32 @@ __device__ const T getElementValue(
   return *reinterpret_cast<const T *>(data + offset + point_index * point_step);
 }
 
+__global__ void radialDivideKernel(
+  const PointTypeStruct * __restrict__ input_points, const size_t num_points,
+  const float center_x, const float center_y, const float angle_increment,
+  const size_t radial_dividers_num, int * __restrict__ indices_list_dev)
+{
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_points) {
+    return;
+  }
+
+  const auto inv_angle_increment = 1.0f / angle_increment;
+
+  // Calculate the angle and distance from the center
+  const float dx = input_points[idx].x - center_x;
+  const float dy = input_points[idx].y - center_y;
+  const float distance = sqrtf(dx * dx + dy * dy);
+  const float angle = atan2(dy, dx); // replace with approximate atan
+
+  // Determine the radial division index
+  auto division_index = static_cast<int>((angle + M_PI) * inv_angle_increment);
+  division_index %= radial_dividers_num;
+
+  // Store the index in the corresponding division
+  indices_list_dev[idx] = division_index;
+}
+
 __global__ void markValidKernel(
   const PointTypeStruct * __restrict__ input_points, const size_t num_points, float z_threshold,
   int * __restrict__ flags)
@@ -79,6 +105,15 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   input_pointcloud_step_ = input_points->point_step;
   const size_t max_bytes = number_input_points_ * sizeof(PointTypeStruct);
 
+  // split pointcloud to radial divisions
+  // sort points in each radial division by distance from the center
+  auto radial_division_indices_list_dev = allocateBufferFromPool<int>(number_input_points_);
+  auto 
+
+  getRadialDivisions(input_points, radial_division_indices_list_dev);
+
+
+
   auto filtered_output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   filtered_output->data = cuda_blackboard::make_unique<std::uint8_t[]>(max_bytes);
 
@@ -115,6 +150,36 @@ void CudaScanGroundSegmentationFilter::returnBufferToPool(T * buffer)
 {
   // Return (but not actual) working buffer to the pool
   CHECK_CUDA_ERROR(cudaFreeAsync(buffer, ground_segment_stream_));
+}
+
+void CudaScanGroundSegmentationFilter::getRadialDivisions(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
+    int * indices_list_dev)
+{
+  // Implementation of the function to divide the point cloud into radial divisions
+  // Sort the points in each radial division by distance from the center
+  // return the indices of the points in each radial division
+  if (number_input_points_ == 0) {
+    return; // No points to process 
+  }
+  const auto * input_points_dev =
+    reinterpret_cast<const PointTypeStruct *>(input_points->data.get());
+  const float center_x = filter_parameters_.center_pcl_shift;
+  const float center_y = 0.0f;
+  const float angle_increment = filter_parameters_.radial_divider_angle_rad;
+  const size_t radial_dividers_num = filter_parameters_.radial_dividers_num;
+
+  dim3 block_dim(512);
+  dim3 grid_dim((number_input_points_ + block_dim.x - 1) / block_dim.x);
+  // Launch the kernel to divide the point cloud into radial divisions
+  // Each thread will process one point and calculate its angle and distance from the center
+
+  radialDivideKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
+    input_points_dev, number_input_points_, center_x, center_y, angle_increment, radial_dividers_num,
+    indices_list_dev);
+  
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
+
 }
 
 void CudaScanGroundSegmentationFilter::getObstaclePointcloud(

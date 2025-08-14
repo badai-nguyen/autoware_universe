@@ -28,6 +28,19 @@ struct PointTypeStruct
   std::uint16_t channel;
 };
 
+struct PointsCenteroid
+{
+  float radius_avg;
+  float height_avg;
+  float height_max;
+  float height_min;
+  uint16_t grid_id;
+  std::vector<size_t> point_indices;
+  std::vector<float> height_list;
+  std::vector<float> radius_list;
+  
+}
+
 // structure to hold parameter values
 struct FilterParameters
 {
@@ -97,6 +110,17 @@ private:
   void getObstaclePointcloud(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     PointTypeStruct * output_points, size_t * num_output_points);
+  /*
+  * This function splits the input point cloud into radial divisions.
+  * Each division corresponds to a specific angle range defined by the radial_divider_angle_rad.
+  * The points in each division are sorted by their distance from the center of the point cloud.
+  * @param input_points The input point cloud data.
+  * @param indices_list_dev point to device memory where array of radial division indices will be stored.
+  * @note This function assumes that the input point cloud is already allocated in device memory.
+  */
+  void getRadialDivisions(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
+    int * indices_list_dev);
 
   cudaStream_t ground_segment_stream_{};
   cudaMemPool_t mem_pool_{};
