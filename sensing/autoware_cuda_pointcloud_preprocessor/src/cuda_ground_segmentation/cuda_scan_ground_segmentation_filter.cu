@@ -20,6 +20,34 @@ __device__ const T getElementValue(
   return *reinterpret_cast<const T *>(data + offset + point_index * point_step);
 }
 
+__device__ inline int getCellID(
+  const PointTypeStruct & point, const float center_x, const float center_y,
+  const float inv_sector_angle_rad, const float cell_size_m, const int max_num_cells_per_sector,
+  const int max_num_cells)
+{
+  const float dx = point.x - center_x;
+  const float dy = point.y - center_y;
+  const float radius = sqrtf(dx * dx + dy * dy);
+  const float angle = atan2f(dy, dx);
+  // Determine the sector index
+  int division_sector_index = static_cast<int>((angle + M_PI) * inv_sector_angle_rad);
+
+  // Determine the radial cell index
+
+  int cell_index_in_sector = static_cast<int>(radius / cell_size_m);
+
+  // combine to get unique cell ID
+
+  int cell_id = division_sector_index * max_num_cells_per_sector + cell_index_in_sector;
+
+  // clamp invalid values
+
+  if (cell_id < 0 || cell_id >= max_num_cells) {
+    return -1;
+  }
+  return cell_id;
+}
+
 __global__ void getCellNumPointsKernel(
   const CellCentroid * __restrict__ cells_centroid_list_dev, const size_t num_cells,
   int * __restrict__ num_points_per_cell)
@@ -63,6 +91,14 @@ __global__ void splitPointToCellsKernel(
   if (cell_id < 0 || cell_id >= max_num_cells) {
     return;  // Out of bounds
   }
+
+  // const auto cell_id = getCellID(
+  //   input_points[idx], center_x, center_y, inv_sector_angle_rad, cell_size_m,
+  //   max_number_cels_per_sector, max_num_cells);
+  // if (cell_id < 0) {
+  //   return;
+  // }
+
   size_t classified_point_index =
     cell_id * max_num_points_per_cell + cells_centroid_dev[cell_id].num_points;
   if (classified_point_index >= max_num_points_per_cell * max_num_cells) {
@@ -281,6 +317,10 @@ __global__ void CellCentroidUpdateKernel(
   auto division_index = static_cast<int>((angle + M_PI) * inv_sector_angle_rad);
   auto grid_index = static_cast<int>(radius / cell_size_m);
   auto cell_id = division_index * max_number_cels_per_sector + grid_index;
+
+  // const auto cell_id = getCellID(
+  //   input_points[idx], center_x, center_y, inv_sector_angle_rad, cell_size_m,
+  //   max_number_cels_per_sector, max_num_cells);
 
   if (cell_id < 0 || cell_id >= max_num_cells) {
     return;  // Out of bounds
