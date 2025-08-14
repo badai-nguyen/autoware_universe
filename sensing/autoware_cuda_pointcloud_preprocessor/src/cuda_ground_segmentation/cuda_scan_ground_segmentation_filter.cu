@@ -456,6 +456,7 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   // mark valid points based on height threshold
 
   CHECK_CUDA_ERROR(cudaFree(num_points_per_cell_dev));
+  CHECK_CUDA_ERROR(cudaFree(classified_points_dev));
 
   filtered_output->header = input_points->header;
   filtered_output->height = 1;  // Set height to 1 for unorganized point cloud
