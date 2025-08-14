@@ -306,6 +306,19 @@ __global__ void CellCentroidUpdateKernel(
   }
 }
 
+// Mark obstacle points for point in classified_points_dev
+__global__ void markObstaclePointsKernel(
+  ClassifiedPointTypeStruct * classified_points_dev, const size_t num_points,
+  int * __restrict__ flags)
+{
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_points) {
+    return;
+  }
+  // Mark obstacle points for point in classified_points_dev
+  flags[idx] = (classified_points_dev[idx].type == PointType::NON_GROUND) ? 1 : 0;
+}
+
 __global__ void markValidKernel(
   const PointTypeStruct * __restrict__ input_points, const size_t num_points, float z_threshold,
   int * __restrict__ flags)
@@ -437,7 +450,8 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   // cells_centroid_list_dev);
 
   // Extract obstacle points from classified_points_dev
-  extractNonGroundPoints(classified_points_dev, output_points_dev, &num_output_points);
+  extractNonGroundPoints(
+    input_points, classified_points_dev, output_points_dev, &num_output_points);
 
   // mark valid points based on height threshold
 
@@ -576,17 +590,63 @@ void CudaScanGroundSegmentationFilter::scanPerSectorGroundReference(
 
 // ============= Extract non-ground points =============
 void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
+  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
   ClassifiedPointTypeStruct * classified_points_dev, PointTypeStruct * output_points_dev,
-  size_t * num_output_points)
+  size_t * num_output_points_host)
 {
   if (number_input_points_ == 0) {
-    *num_output_points = 0;
+    *num_output_points_host = 0;
     return;  // No points to process
   }
+  auto * flag_dev = allocateBufferFromPool<int>(number_input_points_);
+  auto * indices_dev = allocateBufferFromPool<int>(number_input_points_);
+  void * temp_storage = nullptr;
+  size_t temp_storage_bytes = 0;
 
-  // Implement the logic to extract non-ground points from classified_points_dev
-  // and fill output_points_dev with the coordinates of non-ground points.
-  // This is a placeholder for the actual CUDA kernel call.
+  dim3 block_dim(512);
+  dim3 grid_dim((number_input_points_ + block_dim.x - 1) / block_dim.x);
+
+  markObstaclePointsKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
+    classified_points_dev, number_input_points_, flag_dev);
+
+  cub::DeviceScan::ExclusiveSum(
+    temp_storage, temp_storage_bytes, flag_dev, indices_dev, static_cast<int>(number_input_points_),
+    ground_segment_stream_);
+  CHECK_CUDA_ERROR(
+    cudaMallocFromPoolAsync(&temp_storage, temp_storage_bytes, mem_pool_, ground_segment_stream_));
+  cub::DeviceScan::ExclusiveSum(
+    temp_storage, temp_storage_bytes, flag_dev, indices_dev, static_cast<int>(number_input_points_),
+    ground_segment_stream_);
+  CHECK_CUDA_ERROR(
+    cudaMallocFromPoolAsync(&temp_storage, temp_storage_bytes, mem_pool_, ground_segment_stream_));
+  cub::DeviceScan::ExclusiveSum(
+    temp_storage, temp_storage_bytes, flag_dev, indices_dev, static_cast<int>(number_input_points_),
+    ground_segment_stream_);
+
+  const auto * input_points_dev =
+    reinterpret_cast<const PointTypeStruct *>(input_points->data.get());
+  scatterKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
+    input_points_dev, flag_dev, indices_dev, number_input_points_, output_points_dev);
+
+  // Count the number of valid points
+  int last_index = 0;
+  int last_flag = 0;
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    &last_index, indices_dev + number_input_points_ - 1, sizeof(int), cudaMemcpyDeviceToHost,
+    ground_segment_stream_));
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    &last_flag, flag_dev + number_input_points_ - 1, sizeof(int), cudaMemcpyDeviceToHost,
+    ground_segment_stream_));
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
+
+  const size_t num_output_points = static_cast<size_t>(last_flag + last_index);
+  *num_output_points_host = num_output_points;
+
+  if (temp_storage) {
+    CHECK_CUDA_ERROR(cudaFreeAsync(temp_storage, ground_segment_stream_));
+  }
+  returnBufferToPool(flag_dev);
+  returnBufferToPool(indices_dev);
 }
 
 // ============= Get obstacle point cloud =============

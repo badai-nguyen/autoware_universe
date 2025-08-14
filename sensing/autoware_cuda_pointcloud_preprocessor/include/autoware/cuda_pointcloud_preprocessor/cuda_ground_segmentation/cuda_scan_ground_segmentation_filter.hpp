@@ -173,8 +173,9 @@ private:
    * Extract obstacle points from classified_points_dev
    */
   void extractNonGroundPoints(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     ClassifiedPointTypeStruct * classified_points_dev, PointTypeStruct * output_points_dev,
-    size_t * num_output_points);
+    size_t * num_output_points_host);
 
   void getObstaclePointcloud(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
