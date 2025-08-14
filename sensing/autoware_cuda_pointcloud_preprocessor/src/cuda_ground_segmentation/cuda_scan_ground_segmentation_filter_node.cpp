@@ -18,11 +18,13 @@ CudaScanGroundSegmentationFilterNode::CudaScanGroundSegmentationFilterNode(
   // Declare parameters
   FilterParameters filter_parameters;
 
+  // global parameters
+  filter_parameters.max_radius = static_cast<float>(declare_parameter<double>("max_radius"));
+
   // common parameters
-  filter_parameters.radial_divider_angle_rad =
-    static_cast<float>(deg2rad(declare_parameter<double>("radial_divider_angle_deg")));
-  filter_parameters.radial_dividers_num =
-    std::ceil(2.0 * M_PI / filter_parameters.radial_divider_angle_rad);
+  filter_parameters.sector_angle_rad =
+    static_cast<float>(deg2rad(declare_parameter<double>("sector_angle_deg")));
+  filter_parameters.num_sectors = std::ceil(2.0 * M_PI / filter_parameters.sector_angle_rad);
 
   // common thresholds
   filter_parameters.global_slope_max_angle_rad =
@@ -42,7 +44,7 @@ CudaScanGroundSegmentationFilterNode::CudaScanGroundSegmentationFilterNode(
   filter_parameters.split_height_distance =
     static_cast<float>(declare_parameter<double>("split_height_distance"));
 
-  // grid mode parameters
+  // cell mode parameters
   filter_parameters.use_recheck_ground_cluster =
     declare_parameter<bool>("use_recheck_ground_cluster");
   filter_parameters.recheck_start_distance =
@@ -50,18 +52,17 @@ CudaScanGroundSegmentationFilterNode::CudaScanGroundSegmentationFilterNode(
   filter_parameters.use_lowest_point = declare_parameter<bool>("use_lowest_point");
   filter_parameters.detection_range_z_max =
     static_cast<float>(declare_parameter<double>("detection_range_z_max"));
-  filter_parameters.low_priority_region_x =
-    static_cast<float>(declare_parameter<double>("low_priority_region_x"));
   filter_parameters.center_pcl_shift =
     static_cast<float>(declare_parameter<double>("center_pcl_shift"));
   filter_parameters.non_ground_height_threshold =
     static_cast<float>(declare_parameter<double>("non_ground_height_threshold"));
 
-  // grid parameters
-  filter_parameters.grid_size_m = static_cast<float>(declare_parameter<double>("grid_size_m"));
-  filter_parameters.grid_mode_switch_radius =
-    static_cast<float>(declare_parameter<double>("grid_mode_switch_radius"));
-  filter_parameters.gnd_grid_buffer_size = declare_parameter<int>("gnd_grid_buffer_size");
+  // cell parameters
+  filter_parameters.cell_divider_size_m =
+    static_cast<float>(declare_parameter<double>("grid_size_m"));
+  filter_parameters.max_num_cells_per_sector =
+    static_cast<int>(filter_parameters.max_radius / filter_parameters.cell_divider_size_m);
+  filter_parameters.gnd_cell_buffer_size = declare_parameter<int>("gnd_cell_buffer_size");
   filter_parameters.virtual_lidar_z = filter_parameters.vehicle_info.vehicle_height_m;
 
   int64_t max_mem_pool_size_in_byte =

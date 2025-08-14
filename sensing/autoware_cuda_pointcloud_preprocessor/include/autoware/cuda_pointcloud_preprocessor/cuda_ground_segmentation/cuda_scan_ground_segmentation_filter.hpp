@@ -28,31 +28,61 @@ struct PointTypeStruct
   std::uint16_t channel;
 };
 
-struct PointsCenteroid
+struct CellTypeStruct
+{
+  PointTypeStruct * points;
+  size_t num_points;
+  float radius_avg;
+  float height_avg;
+  float height_max;
+  float height_min;
+  uint16_t cell_id;  // cell_id = sector_id * number_cells_per_sector + grid_index
+};
+
+enum class PointType : uint8_t {
+  INIT = 0,
+  GROUND,
+  NON_GROUND,
+  POINT_FOLLOW,
+  UNKNOWN,
+  VIRTUAL_GROUND,
+  OUT_OF_RANGE
+};
+
+struct ClassifiedPointTypeStruct
+{
+  float x;
+  float y;
+  float z;
+  std::uint8_t intensity;
+  std::uint8_t return_type;
+  std::uint16_t channel;
+  PointType type;
+  float radius;
+  size_t origin_index;  // index in the original point cloud
+};
+
+struct CellCentroid
 {
   float radius_avg;
   float height_avg;
   float height_max;
   float height_min;
-  uint16_t grid_id;
+  size_t num_ground_points;
+  float ground_reference_z;
+  float ground_reference_x;
+  float ground_reference_y;
   std::vector<size_t> point_indices;
-  std::vector<float> height_list;
-  std::vector<float> radius_list;
-  
-}
+  size_t num_points;
+  uint16_t cell_id;  // cell_id = sector_id * number_cells_per_sector + grid_index
+};
 
 // structure to hold parameter values
 struct FilterParameters
 {
-  uint16_t gnd_grid_continual_thresh;
+  float max_radius;
   float non_ground_height_threshold;
-  float low_priority_region_x;
   float center_pcl_shift{0.0f};  // virtual center of pcl to center mass
-
-  // common parameters
-  float radial_divider_angle_rad;  // distance in rads between dividers
-  size_t radial_dividers_num;
-  VehicleInfo vehicle_info;
 
   // common thresholds
   float global_slope_max_angle_rad;  // radians
@@ -61,22 +91,27 @@ struct FilterParameters
   float local_slope_max_ratio;
   float split_points_distance_tolerance;  // distance in meters between concentric divisions
 
-  // non-grid mode parameters
+  // non-cell mode parameters
   bool use_virtual_ground_point;
   float split_height_distance;  // minimum height threshold regardless the slope,
                                 // useful for close points
 
-  // grid mode parameters
+  // common parameters
+  float sector_angle_rad;  // radial sector angle in radians
+  size_t num_sectors;      // number of radial sectors
+  VehicleInfo vehicle_info;
+
+  // cell mode parameters
   bool use_recheck_ground_cluster;  // to enable recheck ground cluster
   float recheck_start_distance;     // distance to start rechecking ground cluster
   bool use_lowest_point;  // to select lowest point for reference in recheck ground cluster,
                           // otherwise select middle point
   float detection_range_z_max;
 
-  // grid parameters
-  float grid_size_m;
-  float grid_mode_switch_radius;  // non linear grid size switching distance
-  uint16_t gnd_grid_buffer_size;
+  // cell parameters
+  float cell_divider_size_m;
+  int max_num_cells_per_sector;  // number of cells per sector
+  uint16_t gnd_cell_buffer_size;
   float virtual_lidar_z;
 };
 
@@ -106,21 +141,30 @@ private:
 
   template <typename T>
   void returnBufferToPool(T * buffer);
+  void scanObstaclePoints(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
+    PointTypeStruct * output_points_dev, size_t * num_output_points,
+    CellCentroid * cells_centroid_list_dev);
+  void splitPointToCells(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
+    const CellCentroid * cells_centroid_list_dev, const int max_num_cells,
+    const int max_num_points_host, ClassifiedPointTypeStruct * classified_points_dev);
 
   void getObstaclePointcloud(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     PointTypeStruct * output_points, size_t * num_output_points);
   /*
-  * This function splits the input point cloud into radial divisions.
-  * Each division corresponds to a specific angle range defined by the radial_divider_angle_rad.
-  * The points in each division are sorted by their distance from the center of the point cloud.
-  * @param input_points The input point cloud data.
-  * @param indices_list_dev point to device memory where array of radial division indices will be stored.
-  * @note This function assumes that the input point cloud is already allocated in device memory.
-  */
+   * This function splits the input point cloud into radial divisions.
+   * Each division corresponds to a specific angle range defined by the radial_divider_angle_rad.
+   * The points in each division are sorted by their distance from the center of the point cloud.
+   * @param input_points The input point cloud data.
+   * @param indices_list_dev point to device memory where array of radial division indices will be
+   * stored.
+   * @note This function assumes that the input point cloud is already allocated in device memory.
+   */
   void getRadialDivisions(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
-    int * indices_list_dev);
+    CellCentroid * indices_list_dev);
 
   cudaStream_t ground_segment_stream_{};
   cudaMemPool_t mem_pool_{};
