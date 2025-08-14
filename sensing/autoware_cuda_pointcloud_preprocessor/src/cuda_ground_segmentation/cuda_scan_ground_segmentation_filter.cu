@@ -111,7 +111,12 @@ __global__ void splitPointToCellsKernel(
   classified_points_dev[classified_point_index].intensity = input_points[idx].intensity;
   classified_points_dev[classified_point_index].return_type = input_points[idx].return_type;
   classified_points_dev[classified_point_index].channel = input_points[idx].channel;
-  classified_points_dev[classified_point_index].type = PointType::INIT;
+  // classified_points_dev[classified_point_index].type = PointType::INIT;
+  if (input_points[idx].z > 0.2) {
+    classified_points_dev[classified_point_index].type = PointType::NON_GROUND;
+  } else {
+    classified_points_dev[classified_point_index].type = PointType::GROUND;
+  }
   classified_points_dev[classified_point_index].radius = radius;
   classified_points_dev[classified_point_index].origin_index =
     idx;  // index in the original point cloud
@@ -473,9 +478,9 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
 
   // classify points without sorting
   // only based on ground reference points of previous cell centroid
-  scanPerSectorGroundReference(
-    classified_points_dev, num_points_per_cell_dev, cells_centroid_list_dev,
-    max_num_points_per_cell_host);
+  // scanPerSectorGroundReference(
+  //   classified_points_dev, num_points_per_cell_dev, cells_centroid_list_dev,
+  //   max_num_points_per_cell_host);
 
   auto filtered_output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   filtered_output->data = cuda_blackboard::make_unique<std::uint8_t[]>(max_bytes);
