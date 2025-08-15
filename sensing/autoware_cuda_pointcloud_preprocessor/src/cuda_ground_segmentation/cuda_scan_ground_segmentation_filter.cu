@@ -353,15 +353,26 @@ __global__ void CellCentroidUpdateKernel(
 
 // Mark obstacle points for point in classified_points_dev
 __global__ void markObstaclePointsKernel(
-  ClassifiedPointTypeStruct * classified_points_dev, const size_t num_points,
+  ClassifiedPointTypeStruct * classified_points_dev, const int num_max_classified_points, const size_t num_points,
   int * __restrict__ flags)
 {
   size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= num_points) {
+  if (idx >= num_max_classified_points) {
     return;
   }
+  // check if the classified_points_dev[idx] is existing?
+  if(classified_points_dev[idx].radius < 0.0f){
+    return;
+  }
+
+  // extract origin index of point 
+  auto origin_index = classified_points_dev[idx].origin_index;
+  auto point_type = classified_points_dev[idx].type;
+
+
   // Mark obstacle points for point in classified_points_dev
-  flags[idx] = (classified_points_dev[idx].type == PointType::NON_GROUND) ? 1 : 0;
+  
+  flags[origin_index] = (point_type == PointType::NON_GROUND) ? 1 : 0;
 }
 
 __global__ void markValidKernel(
@@ -431,7 +442,7 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   getRadialDivisions(input_points, cells_centroid_list_dev);
 
   // get maximum of num_points along all cells in cells_centroid_list_dev, on device
-  // cub::DeviceScan::Ex
+
   int * num_points_per_cell_dev;  // array of num_points for each cell
   int * max_num_point_dev;        // storage for maximum number of points along all cells
   int max_num_cells = filter_parameters_.max_num_cells_per_sector * filter_parameters_.num_sectors;
@@ -461,47 +472,52 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   CHECK_CUDA_ERROR(cudaMemcpy(
     &max_num_points_per_cell_host, max_num_point_dev, sizeof(int), cudaMemcpyDeviceToHost));
   CHECK_CUDA_ERROR(cudaFree(d_temp_storage));
+  std::cout<< "max_num_points per cell :"<< max_num_points_per_cell_host << std::endl;
+
+
+  // // allocated Cells memory for splitting pointcloud
+
+  // auto * classified_points_dev =
+  //   allocateBufferFromPool<ClassifiedPointTypeStruct>(max_num_cells * max_num_points_per_cell_host);
+
+  // splitPointToCells(
+  //   input_points, cells_centroid_list_dev, max_num_cells, max_num_points_per_cell_host,
+  //   classified_points_dev);
+
+  // // sort classified point by radius in each cell
+  // // The real existing points in each cell are located in cells_centroid_list_dev's num_points
+  // // sortPointsInCells(num_points_per_cell_dev, classified_points_dev);
+
+  // // classify points without sorting
+  // // only based on ground reference points of previous cell centroid
+  // // scanPerSectorGroundReference(
+  // //   classified_points_dev, num_points_per_cell_dev, cells_centroid_list_dev,
+  // //   max_num_points_per_cell_host);
+
+
+  // auto * output_points_dev = reinterpret_cast<PointTypeStruct *>(filtered_output->data.get());
+  size_t num_output_points = 0;
+
+  // // getObstaclePointcloud(input_points, output_points_dev, &num_output_points);
+
+  // // classify points based on ground reference points of previous cell centroid
+  // // scanObstaclePoints(input_points, output_points_dev, &num_output_points,
+  // // cells_centroid_list_dev);
+
+  // // Extract obstacle points from classified_points_dev
+  // extractNonGroundPoints(
+  //   input_points, classified_points_dev, max_num_cells, max_num_points_per_cell_host , output_points_dev, &num_output_points);
+
+  // // mark valid points based on height threshold
+
+  // CHECK_CUDA_ERROR(cudaFree(classified_points_dev));
+
   CHECK_CUDA_ERROR(cudaFree(max_num_point_dev));
-
-  // allocated Cells memory for splitting pointcloud
-
-  auto * classified_points_dev =
-    allocateBufferFromPool<ClassifiedPointTypeStruct>(max_num_cells * max_num_points_per_cell_host);
-
-  splitPointToCells(
-    input_points, cells_centroid_list_dev, max_num_cells, max_num_points_per_cell_host,
-    classified_points_dev);
-
-  // sort classified point by radius in each cell
-  // The real existing points in each cell are located in cells_centroid_list_dev's num_points
-  // sortPointsInCells(num_points_per_cell_dev, classified_points_dev);
-
-  // classify points without sorting
-  // only based on ground reference points of previous cell centroid
-  // scanPerSectorGroundReference(
-  //   classified_points_dev, num_points_per_cell_dev, cells_centroid_list_dev,
-  //   max_num_points_per_cell_host);
+  CHECK_CUDA_ERROR(cudaFree(num_points_per_cell_dev));
+  CHECK_CUDA_ERROR(cudaFree(cells_centroid_list_dev));
 
   auto filtered_output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   filtered_output->data = cuda_blackboard::make_unique<std::uint8_t[]>(max_bytes);
-
-  auto * output_points_dev = reinterpret_cast<PointTypeStruct *>(filtered_output->data.get());
-  size_t num_output_points = 0;
-
-  // getObstaclePointcloud(input_points, output_points_dev, &num_output_points);
-
-  // classify points based on ground reference points of previous cell centroid
-  // scanObstaclePoints(input_points, output_points_dev, &num_output_points,
-  // cells_centroid_list_dev);
-
-  // Extract obstacle points from classified_points_dev
-  extractNonGroundPoints(
-    input_points, classified_points_dev, output_points_dev, &num_output_points);
-
-  // mark valid points based on height threshold
-
-  CHECK_CUDA_ERROR(cudaFree(num_points_per_cell_dev));
-  CHECK_CUDA_ERROR(cudaFree(classified_points_dev));
 
   filtered_output->header = input_points->header;
   filtered_output->height = 1;  // Set height to 1 for unorganized point cloud
@@ -637,7 +653,7 @@ void CudaScanGroundSegmentationFilter::scanPerSectorGroundReference(
 // ============= Extract non-ground points =============
 void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
-  ClassifiedPointTypeStruct * classified_points_dev, PointTypeStruct * output_points_dev,
+  ClassifiedPointTypeStruct * classified_points_dev,  const int max_num_cells, const int max_num_points_per_cell_host, PointTypeStruct * output_points_dev,
   size_t * num_output_points_host)
 {
   if (number_input_points_ == 0) {
@@ -651,9 +667,10 @@ void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
 
   dim3 block_dim(512);
   dim3 grid_dim((number_input_points_ + block_dim.x - 1) / block_dim.x);
+  const int max_classified_points_num = max_num_cells * max_num_points_per_cell_host;
 
   markObstaclePointsKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
-    classified_points_dev, number_input_points_, flag_dev);
+    classified_points_dev, max_classified_points_num, number_input_points_, flag_dev);
 
   cub::DeviceScan::ExclusiveSum(
     temp_storage, temp_storage_bytes, flag_dev, indices_dev, static_cast<int>(number_input_points_),

@@ -60,6 +60,18 @@ struct ClassifiedPointTypeStruct
   PointType type;
   float radius;
   size_t origin_index;  // index in the original point cloud
+
+  ClassifiedPointTypeStruct()
+  : x(0.0f),
+    y(0.0f),
+    z(0.0f),
+    intensity(0),
+    return_type(0),
+    channel(0),
+    type(PointType::INIT),
+    radius(-1.0),
+    origin_index(0)
+  {}
 };
 
 struct CellCentroid
@@ -174,7 +186,7 @@ private:
    */
   void extractNonGroundPoints(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
-    ClassifiedPointTypeStruct * classified_points_dev, PointTypeStruct * output_points_dev,
+    ClassifiedPointTypeStruct * classified_points_dev,const int max_num_cells, const int max_num_points_per_cell_host,  PointTypeStruct * output_points_dev,
     size_t * num_output_points_host);
 
   void getObstaclePointcloud(
