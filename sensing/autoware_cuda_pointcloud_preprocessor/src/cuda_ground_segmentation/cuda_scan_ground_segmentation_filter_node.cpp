@@ -62,6 +62,8 @@ CudaScanGroundSegmentationFilterNode::CudaScanGroundSegmentationFilterNode(
     static_cast<float>(declare_parameter<double>("grid_size_m"));
   filter_parameters.max_num_cells_per_sector =
     static_cast<int>(filter_parameters.max_radius / filter_parameters.cell_divider_size_m);
+  filter_parameters.max_num_cells =
+    filter_parameters.max_num_cells_per_sector * filter_parameters.num_sectors;
   filter_parameters.gnd_cell_buffer_size = declare_parameter<int>("gnd_cell_buffer_size");
   filter_parameters.virtual_lidar_z = filter_parameters.vehicle_info.vehicle_height_m;
 

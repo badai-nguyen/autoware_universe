@@ -85,7 +85,7 @@ struct CellCentroid
   float ground_reference_z;
   float ground_reference_x;
   float ground_reference_y;
-  size_t num_points;
+  int num_points;
   uint16_t cell_id;  // cell_id = sector_id * number_cells_per_sector + grid_index
   // initialize constructor
   CellCentroid()
@@ -137,6 +137,7 @@ struct FilterParameters
   // cell parameters
   float cell_divider_size_m;
   int max_num_cells_per_sector;  // number of cells per sector
+  int max_num_cells;
   uint16_t gnd_cell_buffer_size;
   float virtual_lidar_z;
 };
@@ -203,7 +204,7 @@ private:
    * stored.
    * @note This function assumes that the input point cloud is already allocated in device memory.
    */
-  void getRadialDivisions(
+  void updateCellCentroid(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     CellCentroid * indices_list_dev);
 
