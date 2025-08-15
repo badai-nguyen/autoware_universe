@@ -93,6 +93,11 @@ __global__ void initPoints(ClassifiedPointTypeStruct * arr, int N)
   arr[idx].radius = -1.0f;
   arr[idx].origin_index = 0;
 }
+__global__ void setFlagsKernel(int * flags, int n, int value)
+{
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) flags[i] = value;  // write real int 0 or 1
+}
 
 __global__ void getCellNumPointsKernel(
   const CellCentroid * __restrict__ cells_centroid_list_dev, const size_t num_cells,
@@ -154,7 +159,7 @@ __global__ void assignPointToCellKernel(
     return;  // Out of bounds
   }
   // add pointcloud to output grid list
-  auto &assign_classified_point_dev = classified_points_dev[point_index_in_classified_dev];
+  auto & assign_classified_point_dev = classified_points_dev[point_index_in_classified_dev];
   assign_classified_point_dev.x = input_points[idx].x;
   assign_classified_point_dev.y = input_points[idx].y;
   assign_classified_point_dev.z = input_points[idx].z;
@@ -166,7 +171,7 @@ __global__ void assignPointToCellKernel(
   assign_classified_point_dev.type = PointType::NON_GROUND;
 
   assign_classified_point_dev.radius = radius;
-  assign_classified_point_dev.origin_index =idx;  // index in the original point cloud
+  assign_classified_point_dev.origin_index = idx;  // index in the original point cloud
   // Update the cell centroid
 }
 
@@ -516,10 +521,11 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   auto * classified_points_dev =
     allocateBufferFromPool<ClassifiedPointTypeStruct>(max_num_cells * max_num_points_per_cell_host);
 
-
   int * cell_counts_dev;  // array of point index in each cell
-  CHECK_CUDA_ERROR(cudaMallocFromPoolAsync(&cell_counts_dev, max_num_cells * sizeof(int), mem_pool_, ground_segment_stream_));
-  CHECK_CUDA_ERROR(cudaMemsetAsync(cell_counts_dev, 0, max_num_cells * sizeof(int), ground_segment_stream_));
+  CHECK_CUDA_ERROR(cudaMallocFromPoolAsync(
+    &cell_counts_dev, max_num_cells * sizeof(int), mem_pool_, ground_segment_stream_));
+  CHECK_CUDA_ERROR(
+    cudaMemsetAsync(cell_counts_dev, 0, max_num_cells * sizeof(int), ground_segment_stream_));
 
   assignPointToCell(
     input_points, cells_centroid_list_dev, cell_counts_dev, max_num_cells,
@@ -710,9 +716,16 @@ void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
     *num_output_points_host = 0;
     return;  // No points to process
   }
-  int * flag_dev;
-  CHECK_CUDA_ERROR(cudaMallocFromPoolAsync(&flag_dev, number_input_points_ * sizeof(int), mem_pool_, ground_segment_stream_));
-  CHECK_CUDA_ERROR(cudaMemsetAsync(flag_dev, 1, number_input_points_ * sizeof(int), ground_segment_stream_));
+  int * flag_dev = nullptr;
+  CHECK_CUDA_ERROR(cudaMallocFromPoolAsync(
+    &flag_dev, number_input_points_ * sizeof(int), mem_pool_, ground_segment_stream_));
+  {
+    dim3 block(256);
+    dim3 grid((number_input_points_ + block.x - 1) / block.x);
+    setFlagsKernel<<<grid, block, 0, ground_segment_stream_>>>(flag_dev, number_input_points_, 1);
+    CHECK_CUDA_ERROR(cudaGetLastError());
+  }
+
   // auto * flag_dev = allocateBufferFromPool<int>(number_input_points_);
   auto * indices_dev = allocateBufferFromPool<int>(number_input_points_);
   void * temp_storage = nullptr;
@@ -738,12 +751,11 @@ void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
     ground_segment_stream_);
   CHECK_CUDA_ERROR(
     cudaMallocFromPoolAsync(&temp_storage, temp_storage_bytes, mem_pool_, ground_segment_stream_));
-    
+
   CHECK_CUDA_ERROR(cudaGetLastError());
 
   const auto * input_points_dev =
     reinterpret_cast<const PointTypeStruct *>(input_points->data.get());
-
 
   scatterKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
     input_points_dev, flag_dev, indices_dev, number_input_points_, output_points_dev);
@@ -751,7 +763,7 @@ void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
   // Count the number of valid points
   int last_index = 0;
   int last_flag = 0;
-  CHECK_CUDA_ERROR(cudaMemcpyAsyn(
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
     &last_index, indices_dev + number_input_points_ - 1, sizeof(int), cudaMemcpyDeviceToHost,
     ground_segment_stream_));
 
