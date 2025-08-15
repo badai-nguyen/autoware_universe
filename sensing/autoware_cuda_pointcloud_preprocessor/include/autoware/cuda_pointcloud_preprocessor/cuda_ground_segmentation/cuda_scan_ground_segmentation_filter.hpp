@@ -172,7 +172,13 @@ private:
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     PointTypeStruct * output_points_dev, size_t * num_output_points,
     CellCentroid * cells_centroid_list_dev);
-  void splitPointToCells(
+  /*
+   * This function calc the cell_id for each point
+   * Assign the point with initialized class into temp memory for classification
+   * Memory size of each cell is depend on predefined cell point num
+   *
+   */
+  void assignPointToCell(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     const CellCentroid * cells_centroid_list_dev, int * splitPointToCells, const int max_num_cells,
     const int max_num_points_host, ClassifiedPointTypeStruct * classified_points_dev);
