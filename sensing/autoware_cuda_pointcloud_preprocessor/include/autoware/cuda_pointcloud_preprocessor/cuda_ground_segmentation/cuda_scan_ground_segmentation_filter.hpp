@@ -181,11 +181,12 @@ private:
   void assignPointToCell(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     const CellCentroid * cells_centroid_list_dev, int * splitPointToCells, const int max_num_cells,
-    const int max_num_points_host, ClassifiedPointTypeStruct * classified_points_dev);
+    const int * num_points_per_cell_dev, const int * index_start_point_each_cell,
+    ClassifiedPointTypeStruct * classified_points_dev);
 
-  int getMaxNumPointOfCells(
+  void getIndexStartPointPerCell(
     const int num_sectors, const int max_num_cells, CellCentroid * cells_centroid_list_dev,
-    int * num_points_per_cell_dev, int * max_num_point_dev);
+    int * num_points_per_cell_dev, int * max_num_point_dev, int * index_start_point_each_cell);
   void sortPointsInCells(
     const int * num_points_per_cell_dev, ClassifiedPointTypeStruct * classified_points_dev);
   void scanPerSectorGroundReference(
@@ -193,12 +194,12 @@ private:
     CellCentroid * cells_centroid_list_dev, const int max_num_points_per_cell);
 
   /*
-   * Extract obstacle points from classified_points_dev
+   * Extract obstacle points from classified_points_dev into
    */
   void extractNonGroundPoints(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     ClassifiedPointTypeStruct * classified_points_dev, const int max_num_cells,
-    const int max_num_points_per_cell_host, PointTypeStruct * output_points_dev,
+    const int * index_start_point_each_cell, PointTypeStruct * output_points_dev,
     size_t * num_output_points_host);
 
   void getObstaclePointcloud(
