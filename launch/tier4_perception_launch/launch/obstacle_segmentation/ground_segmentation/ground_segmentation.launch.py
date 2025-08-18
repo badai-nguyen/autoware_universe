@@ -543,8 +543,9 @@ def launch_setup(context, *args, **kwargs):
                 name="cuda_scan_ground_segmentation_filter",
                 remappings=[
                     ("~/input/pointcloud", "/sensing/lidar/concatenated/pointcloud"),
-                    ("~/input/pointcloud/cuda", "/concatenated/pointcloud/cuda"),
+                    ("~/input/pointcloud/cuda", "/sensing/lidar/concatenated/pointcloud/cuda"),
                     ("~/output/pointcloud", "/perception/obstacle_segmentation/pointcloud"),
+                    ("~/output/pointcloud/cuda", "/perception/obstacle_segmentation/pointcloud/cuda"),
                 ],
                 parameters=[ground_segmentation_node_param],
                 extra_arguments=[],
