@@ -183,6 +183,9 @@ private:
     const CellCentroid * cells_centroid_list_dev, int * splitPointToCells, const int max_num_cells,
     const int max_num_points_host, ClassifiedPointTypeStruct * classified_points_dev);
 
+  int getMaxNumPointOfCells(
+    const int num_sectors, const int max_num_cells, CellCentroid * cells_centroid_list_dev,
+    int * num_points_per_cell_dev, int * max_num_point_dev);
   void sortPointsInCells(
     const int * num_points_per_cell_dev, ClassifiedPointTypeStruct * classified_points_dev);
   void scanPerSectorGroundReference(
