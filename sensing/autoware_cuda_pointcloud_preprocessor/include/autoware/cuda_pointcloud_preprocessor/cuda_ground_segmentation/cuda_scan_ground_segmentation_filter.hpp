@@ -18,6 +18,13 @@ namespace autoware::cuda_pointcloud_preprocessor
 {
 
 using autoware::vehicle_info_utils::VehicleInfo;
+enum SegmentationMode : uint8_t {
+  UNINITIALIZED = 0,
+  CONTINUOUS,
+  DISCONTINUOUS,
+  BREAK
+};
+
 struct PointTypeStruct
 {
   float x;
@@ -86,7 +93,7 @@ struct CellCentroid
   float ground_reference_x;
   float ground_reference_y;
   int num_points;
-  uint16_t cell_id;  // cell_id = sector_id * number_cells_per_sector + grid_index
+  int cell_id;  // cell_id = sector_id * number_cells_per_sector + grid_index
   // initialize constructor
   CellCentroid()
   : radius_avg(0.0f),
@@ -215,7 +222,7 @@ private:
    * stored.
    * @note This function assumes that the input point cloud is already allocated in device memory.
    */
-  void updateCellCentroid(
+  void addPointToCells(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     CellCentroid * indices_list_dev);
 
