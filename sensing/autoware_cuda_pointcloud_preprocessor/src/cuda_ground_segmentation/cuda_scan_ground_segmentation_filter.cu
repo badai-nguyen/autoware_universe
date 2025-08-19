@@ -186,37 +186,75 @@ __global__ void assignPointToCellKernel(
   // Update the cell centroid
 }
 
-__device__ void addGroundPointToCellCentroid(CellCentroid & current_cell_centroid, const ClassifiedPointTypeStruct & point){
+__device__ void addGroundPointToCellCentroid(
+  CellCentroid & current_cell_centroid, const ClassifiedPointTypeStruct & point)
+{
   current_cell_centroid.ground_reference_z =
-    current_cell_centroid.ground_reference_z * current_cell_centroid.num_ground_points +
-    point.z;
+    current_cell_centroid.ground_reference_z * current_cell_centroid.num_ground_points + point.z;
   current_cell_centroid.num_ground_points++;
   current_cell_centroid.ground_reference_z =
     current_cell_centroid.ground_reference_z / current_cell_centroid.num_ground_points;
 
   current_cell_centroid.ground_reference_x =
-    current_cell_centroid.ground_reference_x * current_cell_centroid.num_ground_points +
-    point.x;
+    current_cell_centroid.ground_reference_x * current_cell_centroid.num_ground_points + point.x;
   current_cell_centroid.ground_reference_x =
     current_cell_centroid.ground_reference_x / current_cell_centroid.num_ground_points;
 
   current_cell_centroid.ground_reference_y =
-    current_cell_centroid.ground_reference_y * current_cell_centroid.num_ground_points +
-    point.y;
+    current_cell_centroid.ground_reference_y * current_cell_centroid.num_ground_points + point.y;
   current_cell_centroid.ground_reference_y =
     current_cell_centroid.ground_reference_y / current_cell_centroid.num_ground_points;
 }
 
-__device__ void updatePrevCellCentroid(const CellCentroid & current, CellCentroid & previous){
+__device__ void updatePrevCellCentroid(const CellCentroid & current, CellCentroid & previous)
+{
   previous.ground_reference_x = current.ground_reference_y;
   previous.ground_reference_y = current.ground_reference_y;
   previous.ground_reference_z = current.ground_reference_z;
 }
 
-__device__ void getSegmentationMode(const CellCentroid * previous_cells, const int continues_checking_cell_num, SegmentationMode & mode)
+__device__ void checkSegmentMode(
+  const CellCentroid * centroid_cells, const int sector_idx, const int max_num_cells_per_sector,
+  const int cell_idx_in_sector, const int continues_checking_cell_num, SegmentationMode & mode)
+{
+  if (cell_idx_in_sector == 0) {
+    // If this is the first cell in the sector, we need to check the previous cells
+    mode = SegmentationMode::UNINITIALIZED;
+    return;
+  }
+  auto previous_cell =
+    centroid_cells[sector_idx * max_num_cells_per_sector + cell_idx_in_sector - 1];
+  // Check if the previous cell has ground points
+  if (previous_cell.num_ground_points > 0) {
+    // If the previous cell has ground points, we can set the mode to CONTINUOUS
+    mode = SegmentationMode::CONTINUOUS;
+    return;
+  }
+  if (cell_idx_in_sector < continues_checking_cell_num) {
+    // If the cell index in sector is less than continues_checking_cell_num, we can set the mode to
+    // UNINITIALIZED
+    mode = SegmentationMode::DISCONTINUOUS;
+    return;
+  }
+  for (int i = 2; i < continues_checking_cell_num; ++i) {
+    auto past_cell = centroid_cells[sector_idx * max_num_cells_per_sector + cell_idx_in_sector - i];
+    if (past_cell.num_ground_points > 0) {
+      mode = SegmentationMode::DISCONTINUOUS;
+      return;
+    }
+  }
+  mode = SegmentationMode::BREAK;  // If no ground points in the previous cells, set mode to BREAK
+  return;
+}
+
+__device__ void getSegmentationMode(
+  const CellCentroid * previous_cells, const int continues_checking_cell_num,
+  SegmentationMode & mode)
 {
   // check if the previous_cells is existing(initialized), num_ground_points < 0 means uninitialized
-  if (previous_cells == nullptr || previous_cells[continues_checking_cell_num - 1].num_ground_points < 0){
+  if (
+    previous_cells == nullptr ||
+    previous_cells[continues_checking_cell_num - 1].num_ground_points < 0) {
     mode = SegmentationMode::UNINITIALIZED;
     return;
   }
@@ -224,24 +262,23 @@ __device__ void getSegmentationMode(const CellCentroid * previous_cells, const i
   // get the back element of previous_cells
   const CellCentroid & last_cell = previous_cells[continues_checking_cell_num - 1];
   // check if the last cell has ground points
-  if(last_cell.num_ground_points > 0) {
+  if (last_cell.num_ground_points > 0) {
     // if the last cell has ground points, set mode to CONTINUOUS
     mode = SegmentationMode::CONTINUOUS;
     return;
   }
-  for(int i = continues_checking_cell_num - 2; i >= 0; --i) {
+  for (int i = continues_checking_cell_num - 2; i >= 0; --i) {
     const CellCentroid & cell = previous_cells[i];
     // if the cell has ground points, set mode to DISCONTINUOUS
     if (cell.num_ground_points > 0) {
       mode = SegmentationMode::DISCONTINUOUS;
       return;
     }
-  } 
+  }
   mode = SegmentationMode::BREAK;  // if no ground points in the previous cells, set mode to BREAK
 }
 
-__global__ void initListPrevGndCells(
-  CellCentroid * prev_cell_centroids, const int num_prev_cells)
+__global__ void initListPrevGndCells(CellCentroid * prev_cell_centroids, const int num_prev_cells)
 {
   // Initialize the previous cell centroids
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -262,12 +299,31 @@ __global__ void initListPrevGndCells(
   prev_cell_centroid->num_points = 0;
   // Initialize the previous cell centroid
 }
+__device__ void SegmentInitializedCell(void)
+{
+}
+
+__device__ void SegmentContinuousCell(void)
+{
+  void();
+}
+
+__device__ void SegmentDiscontinuousCell(void)
+{
+  void();
+}
+
+__device__ void SegmentBreakCell(void)
+{
+  void();
+}
+
 __global__ void scanPerSectorGroundReferenceKernel(
   ClassifiedPointTypeStruct * classified_points_dev, const int num_sectors,
   const int * num_points_per_cell_dev, CellCentroid * cells_centroid_list_dev,
   int max_num_cells_per_sector, const int * index_start_point_each_cell,
   const float non_ground_height_threshold, const float non_ground_detection_range,
-  CellCentroid * prev_cell_centroids)
+  const int continues_checking_cell_num)
 {
   // Implementation of the kernel
   // scan in each sector from cell_index_in_sector = 0 to max_num_cells_per_sector
@@ -278,15 +334,10 @@ __global__ void scanPerSectorGroundReferenceKernel(
   // For each sector, find the ground reference points if points exist
   // otherwise, use the previous sector ground reference points
   // initialize the previous cell centroid
-  auto * prev_cell_centroid = &prev_cell_centroids[idx];
-  prev_cell_centroid->ground_reference_z = 0.0f;
-  prev_cell_centroid->ground_reference_x = 0.0f;
-  prev_cell_centroid->ground_reference_y = 0.0f;
-  prev_cell_centroid->num_ground_points = 0;
-  prev_cell_centroid->num_points = 0;
-  prev_cell_centroid->cell_id = 0;
 
-  bool sector_initialized = false;
+  // Process the first cell of the sector
+  SegmentationMode mode = SegmentationMode::UNINITIALIZED;
+
   for (int cell_index_in_sector = 0; cell_index_in_sector < max_num_cells_per_sector;
        ++cell_index_in_sector) {
     auto cell_id = idx * max_num_cells_per_sector + cell_index_in_sector;
@@ -294,70 +345,21 @@ __global__ void scanPerSectorGroundReferenceKernel(
     auto index_start_point_current_cell = index_start_point_each_cell[cell_id];
     auto & current_cell_centroid = cells_centroid_list_dev[cell_id];
 
-    if (!sector_initialized) {
-      if (num_points_in_cell <= 0) {
-        // No points in this cell, skip
-        continue;
-      }
-      // the first cell in sector has points
-      sector_initialized = true;
-      for (int point_index_in_cell = 0; point_index_in_cell < num_points_in_cell;
-           ++point_index_in_cell) {
-        auto & point = classified_points_dev[index_start_point_current_cell + point_index_in_cell];
-        if (point.z > non_ground_height_threshold + prev_cell_centroid->ground_reference_z) {
-          point.type = PointType::NON_GROUND;
-          continue;
-        }
-        if (
-          point.z > prev_cell_centroid->ground_reference_z + non_ground_detection_range ||
-          point.z < prev_cell_centroid->ground_reference_z - non_ground_height_threshold) {
-          point.type = PointType::OUT_OF_RANGE;
-          continue;
-        }
+    checkSegmentMode(
+      cells_centroid_list_dev, idx, cell_index_in_sector, max_num_cells_per_sector,
+      continues_checking_cell_num, mode);
 
-        point.type = PointType::GROUND;
-        addGroundPointToCellCentroid(current_cell_centroid, point);
-      }
-      // update previous cell centroid
-      if (current_cell_centroid.num_ground_points > 0) {
-        updatePrevCellCentroid(current_cell_centroid, *prev_cell_centroid);
-      }
-    } else {
-      // use the previous sector ground reference points
-      // check number of points in the cell
-      if (num_points_in_cell <= 0) {
-        // No points in this cell, update previous cell centroid
-        continue;
-      }
-      for (int point_index_in_cell = 0; point_index_in_cell < num_points_in_cell;
-           ++point_index_in_cell) {
-        auto & point = classified_points_dev[index_start_point_current_cell + point_index_in_cell];
-        // TODO: add other conditions for non-ground points
-        if (point.z > non_ground_height_threshold + prev_cell_centroid->ground_reference_z) {
-          point.type = PointType::NON_GROUND;
-          continue;
-        }
-        if (
-          point.z > prev_cell_centroid->ground_reference_z + non_ground_detection_range ||
-          point.z < prev_cell_centroid->ground_reference_z - non_ground_height_threshold) {
-          point.type = PointType::OUT_OF_RANGE;
-          continue;
-        }
-        point.type = PointType::GROUND;
-        addGroundPointToCellCentroid(current_cell_centroid, point);
-      }
-      if (current_cell_centroid.num_ground_points > 0) {
-        // update previous cell centroid
-        prev_cell_centroid->ground_reference_z = current_cell_centroid.ground_reference_z;
-        prev_cell_centroid->ground_reference_x = current_cell_centroid.ground_reference_x;
-        prev_cell_centroid->ground_reference_y = current_cell_centroid.ground_reference_y;
-      } else {
-        // if no ground points in the cell, use previous cell centroid
-        updatePrevCellCentroid(*prev_cell_centroid, current_cell_centroid);
-
-      }
+    if (mode == SegmentationMode::UNINITIALIZED) {
+      SegmentInitializedCell();
+    } else if (mode == SegmentationMode::CONTINUOUS) {
+      SegmentContinuousCell();
+    } else if (mode == SegmentationMode::DISCONTINUOUS) {
+      SegmentDiscontinuousCell();
+    } else if (mode == SegmentationMode::BREAK) {
+      SegmentBreakCell();
     }
-    // Get the cell centroid
+
+    // if the first round of scan
   }
 }
 
@@ -574,7 +576,7 @@ void CudaScanGroundSegmentationFilter::scanPerSectorGroundReference(
   scanPerSectorGroundReferenceKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
     classified_points_dev, num_sectors, num_points_per_cell_dev, cells_centroid_list_dev,
     max_num_cells_per_sector, index_start_point_each_cell, non_ground_height_threshold,
-    non_ground_detection_range, prev_cell_centroids);
+    non_ground_detection_range, filter_parameters_.gnd_cell_buffer_size);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
 }
 
@@ -866,13 +868,15 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   // // sortPointsInCells(num_points_per_cell_dev, classified_points_dev);
 
   // // classify points without sorting
-  // // only based on ground reference points of previous cell centroid
+  // allocate gnd_grid_buffer_size of CentroidCells memory for  previous cell centroids
   CellCentroid * prev_cell_centroids;
   CHECK_CUDA_ERROR(cudaMallocFromPoolAsync(
-    &prev_cell_centroids, filter_parameters_.num_sectors * sizeof(CellCentroid), mem_pool_,
-    ground_segment_stream_));
+    &prev_cell_centroids,
+    filter_parameters_.num_sectors * filter_parameters_.gnd_cell_buffer_size * sizeof(CellCentroid),
+    mem_pool_, ground_segment_stream_));
   CHECK_CUDA_ERROR(cudaMemsetAsync(
-    prev_cell_centroids, 0, filter_parameters_.num_sectors * sizeof(CellCentroid),
+    prev_cell_centroids, 0,
+    filter_parameters_.num_sectors * filter_parameters_.gnd_cell_buffer_size * sizeof(CellCentroid),
     ground_segment_stream_));
   scanPerSectorGroundReference(
     classified_points_dev, num_points_per_cell_dev, cells_centroid_list_dev,
@@ -883,12 +887,6 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
 
   auto * output_points_dev = reinterpret_cast<PointTypeStruct *>(filtered_output->data.get());
   size_t num_output_points = 0;
-
-  // // getObstaclePointcloud(input_points, output_points_dev, &num_output_points);
-
-  // // classify points based on ground reference points of previous cell centroid
-  // // scanObstaclePoints(input_points, output_points_dev, &num_output_points,
-  // // cells_centroid_list_dev);
 
   // Extract obstacle points from classified_points_dev
   extractNonGroundPoints(
