@@ -186,6 +186,33 @@ __global__ void assignPointToCellKernel(
   // Update the cell centroid
 }
 
+__device__ void addGroundPointToCellCentroid(CellCentroid & current_cell_centroid, const ClassifiedPointTypeStruct & point){
+  current_cell_centroid.ground_reference_z =
+    current_cell_centroid.ground_reference_z * current_cell_centroid.num_ground_points +
+    point.z;
+  current_cell_centroid.num_ground_points++;
+  current_cell_centroid.ground_reference_z =
+    current_cell_centroid.ground_reference_z / current_cell_centroid.num_ground_points;
+
+  current_cell_centroid.ground_reference_x =
+    current_cell_centroid.ground_reference_x * current_cell_centroid.num_ground_points +
+    point.x;
+  current_cell_centroid.ground_reference_x =
+    current_cell_centroid.ground_reference_x / current_cell_centroid.num_ground_points;
+
+  current_cell_centroid.ground_reference_y =
+    current_cell_centroid.ground_reference_y * current_cell_centroid.num_ground_points +
+    point.y;
+  current_cell_centroid.ground_reference_y =
+    current_cell_centroid.ground_reference_y / current_cell_centroid.num_ground_points;
+}
+
+__device__ void updatePrevCellCentroid(const CellCentroid & current, CellCentroid & previous){
+  previous.ground_reference_x = current.ground_reference_y;
+  previous.ground_reference_y = current.ground_reference_y;
+  previous.ground_reference_z = current.ground_reference_z;
+}
+
 __global__ void scanPerSectorGroundReferenceKernel(
   ClassifiedPointTypeStruct * classified_points_dev, const int num_sectors,
   const int * num_points_per_cell_dev, CellCentroid * cells_centroid_list_dev,
@@ -240,30 +267,11 @@ __global__ void scanPerSectorGroundReferenceKernel(
         }
 
         point.type = PointType::GROUND;
-        current_cell_centroid.ground_reference_z =
-          current_cell_centroid.ground_reference_z * current_cell_centroid.num_ground_points +
-          point.z;
-        current_cell_centroid.num_ground_points++;
-        current_cell_centroid.ground_reference_z =
-          current_cell_centroid.ground_reference_z / current_cell_centroid.num_ground_points;
-
-        current_cell_centroid.ground_reference_x =
-          current_cell_centroid.ground_reference_x * current_cell_centroid.num_ground_points +
-          point.x;
-        current_cell_centroid.ground_reference_x =
-          current_cell_centroid.ground_reference_x / current_cell_centroid.num_ground_points;
-
-        current_cell_centroid.ground_reference_y =
-          current_cell_centroid.ground_reference_y * current_cell_centroid.num_ground_points +
-          point.y;
-        current_cell_centroid.ground_reference_y =
-          current_cell_centroid.ground_reference_y / current_cell_centroid.num_ground_points;
+        addGroundPointToCellCentroid(current_cell_centroid, point);
       }
       // update previous cell centroid
       if (current_cell_centroid.num_ground_points > 0) {
-        prev_cell_centroid->ground_reference_z = current_cell_centroid.ground_reference_z;
-        prev_cell_centroid->ground_reference_x = current_cell_centroid.ground_reference_x;
-        prev_cell_centroid->ground_reference_y = current_cell_centroid.ground_reference_y;
+        updatePrevCellCentroid(current_cell_centroid, *prev_cell_centroid);
       }
     } else {
       // use the previous sector ground reference points
@@ -287,24 +295,7 @@ __global__ void scanPerSectorGroundReferenceKernel(
           continue;
         }
         point.type = PointType::GROUND;
-        current_cell_centroid.ground_reference_z =
-          current_cell_centroid.ground_reference_z * current_cell_centroid.num_ground_points +
-          point.z;
-        current_cell_centroid.num_ground_points++;
-        current_cell_centroid.ground_reference_z =
-          current_cell_centroid.ground_reference_z / current_cell_centroid.num_ground_points;
-
-        current_cell_centroid.ground_reference_x =
-          current_cell_centroid.ground_reference_x * current_cell_centroid.num_ground_points +
-          point.x;
-        current_cell_centroid.ground_reference_x =
-          current_cell_centroid.ground_reference_x / current_cell_centroid.num_ground_points;
-
-        current_cell_centroid.ground_reference_y =
-          current_cell_centroid.ground_reference_y * current_cell_centroid.num_ground_points +
-          point.y;
-        current_cell_centroid.ground_reference_y =
-          current_cell_centroid.ground_reference_y / current_cell_centroid.num_ground_points;
+        addGroundPointToCellCentroid(current_cell_centroid, point);
       }
       if (current_cell_centroid.num_ground_points > 0) {
         // update previous cell centroid
@@ -313,9 +304,8 @@ __global__ void scanPerSectorGroundReferenceKernel(
         prev_cell_centroid->ground_reference_y = current_cell_centroid.ground_reference_y;
       } else {
         // if no ground points in the cell, use previous cell centroid
-        current_cell_centroid.ground_reference_z = prev_cell_centroid->ground_reference_z;
-        current_cell_centroid.ground_reference_x = prev_cell_centroid->ground_reference_x;
-        current_cell_centroid.ground_reference_y = prev_cell_centroid->ground_reference_y;
+        updatePrevCellCentroid(*prev_cell_centroid, current_cell_centroid);
+
       }
     }
     // Get the cell centroid

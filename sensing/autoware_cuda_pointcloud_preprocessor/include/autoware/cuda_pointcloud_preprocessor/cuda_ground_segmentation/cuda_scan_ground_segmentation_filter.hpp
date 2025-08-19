@@ -189,7 +189,7 @@ private:
     int * num_points_per_cell_dev, int * max_num_point_dev, int * index_start_point_each_cell);
   void sortPointsInCells(
     const int * num_points_per_cell_dev, ClassifiedPointTypeStruct * classified_points_dev);
-  void scanPerSectorGrounxdReference(
+  void scanPerSectorGroundReference(
     ClassifiedPointTypeStruct * classified_points_dev, const int * num_points_per_cell_dev,
     CellCentroid * cells_centroid_list_dev, const int * index_start_point_each_cell,
     CellCentroid * prev_cell_centroids);
