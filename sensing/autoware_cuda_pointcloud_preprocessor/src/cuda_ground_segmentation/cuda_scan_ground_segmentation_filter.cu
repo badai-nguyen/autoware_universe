@@ -175,11 +175,6 @@ __global__ void assignPointToCellKernel(
   assign_classified_point_dev.return_type = input_points[idx].return_type;
   assign_classified_point_dev.channel = input_points[idx].channel;
   assign_classified_point_dev.type = PointType::INIT;
-  // if (assign_classified_point_dev.z > 0.3) {
-  //   assign_classified_point_dev.type = PointType::NON_GROUND;
-  // } else {
-  //   assign_classified_point_dev.type = PointType::GROUND;
-  // }
 
   assign_classified_point_dev.radius = radius;
   assign_classified_point_dev.origin_index = idx;  // index in the original point cloud
@@ -299,21 +294,138 @@ __global__ void initListPrevGndCells(CellCentroid * prev_cell_centroids, const i
   prev_cell_centroid->num_points = 0;
   // Initialize the previous cell centroid
 }
-__device__ void SegmentInitializedCell(void)
+__device__ void SegmentInitializedCell(
+  const CellCentroid * prev_cells, ClassifiedPointTypeStruct * classify_points,
+  const size_t idx_start_point_of_cell, const size_t num_points_of_cell, const float center_x,
+  const float center_y, const float non_ground_height_threshold, const float detection_range_z_max,
+  const float global_slope_max_ratio, const float local_slope_max_ratio,
+  const int continues_checking_cell_num, const int sector_start_cell_index,
+  const int cell_idx_in_sector)
 {
+  for (size_t i = 0; i < num_points_of_cell; ++i) {
+    auto & point = classify_points[idx_start_point_of_cell + i];
+    // Check if the point is ground
+    if (point.z > detection_range_z_max || point.z < -non_ground_height_threshold) {
+      point.type = PointType::OUT_OF_RANGE;
+      continue;  // Skip non-ground points
+    }
+    if (point.z > non_ground_height_threshold) {
+      point.type = PointType::NON_GROUND;
+      continue;  // Skip non-ground points
+    }
+    if (
+      point.z / point.radius > global_slope_max_ratio ||
+      point.z / point.radius > local_slope_max_ratio) {
+      point.type = PointType::NON_GROUND;
+      continue;  // Skip non-ground points
+    }
+  }
 }
 
-__device__ void SegmentContinuousCell(void)
+__device__ float calcLocalGndGradient(
+  const CellCentroid * current_cells, const int continues_checking_cell_num,
+  const int sector_start_index, const int cell_idx_in_sector)
+{
+  // Calculate the local ground gradient based on the previous cells
+  if (continues_checking_cell_num < 2) {
+    return 0.0f;  // Not enough data to calculate gradient
+  }
+
+  float orig_z =
+    current_cells[sector_start_index + cell_idx_in_sector - continues_checking_cell_num]
+      .ground_reference_z;
+  float orig_radius =
+    current_cells[sector_start_index + cell_idx_in_sector - continues_checking_cell_num].radius_avg;
+  float dz = 0.0f;
+  float dr = 0.0f;
+  float gradient = 0.0f;
+
+  for (int i = 1; i < continues_checking_cell_num; ++i) {
+    const auto & prev_cell = current_cells[sector_start_index + cell_idx_in_sector - i];
+    dz = prev_cell.ground_reference_z - orig_z;
+    dr = prev_cell.radius_avg - orig_radius;
+    gradient += dz / dr;
+  }
+  gradient /= continues_checking_cell_num - 1;  // Average the gradient ratio
+  return gradient;
+}
+
+__device__ void SegmentContinuousCell(
+  const CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
+  const size_t idx_start_point_of_cell, const size_t num_points_of_cell, const float center_x,
+  const float center_y, const float non_ground_height_threshold, const float detection_range_z_max,
+  const float global_slope_max_ratio, const float local_slope_max_ratio,
+  const int continues_checking_cell_num, const int sector_start_cell_index,
+  const int cell_idx_in_sector)
+{
+  // compare point of current cell with previous cell center by local slope angle
+  auto local_gradient = calcLocalGndGradient(
+    centroid_cells, continues_checking_cell_num, sector_start_cell_index, cell_idx_in_sector);
+  int cell_id = sector_start_cell_index + cell_idx_in_sector;
+  for (size_t i = 0; i < num_points_of_cell; ++i) {
+    auto & point = classify_points[idx_start_point_of_cell + i];
+    // 1. height is out-of-range
+    if (point.z > detection_range_z_max) {
+      point.type = PointType::OUT_OF_RANGE;
+      return;  // Skip non-ground points
+    }
+    auto dx = point.x - centroid_cells[cell_id - 1].ground_reference_x;
+    auto dy = point.y - centroid_cells[cell_id - 1].ground_reference_y;
+    auto dz = point.z - centroid_cells[cell_id - 1].ground_reference_z;
+    auto radius = sqrtf(dx * dx + dy * dy);
+
+    // 2. the angle is exceed the local slope threshold
+    if (dz / radius > local_slope_max_ratio) {
+      point.type = PointType::NON_GROUND;
+      continue;  // Skip non-ground points
+    }
+
+    // 3. height from the estimated ground center estimated by local gradient
+    float estimated_ground_z =
+      centroid_cells[cell_id - 1].ground_reference_z + local_gradient * radius;
+    if (point.z > estimated_ground_z + non_ground_height_threshold) {
+      point.type = PointType::NON_GROUND;
+      continue;  // Skip non-ground points
+    }
+    if (abs(point.z - estimated_ground_z) < non_ground_height_threshold) {
+      // If the point is close to the estimated ground height, classify it as ground
+      point.type = PointType::GROUND;
+      continue;  // Mark as ground point
+    }
+
+    if (point.z < estimated_ground_z - non_ground_height_threshold) {
+      // If the point is below the estimated ground height, classify it as non-ground
+      point.type = PointType::OUT_OF_RANGE;
+      continue;  // Skip non-ground points
+    }
+    // TODO: recheck current NON_GROUND point
+    // if(recheck){
+    //   recheckCurrentCell(centroid_cells[cell_id], classify_points, idx_start_point_of_cell,
+    //   num_points_of_cell, center_x, center_y, non_ground_height_threshold, detection_range_z_max,
+    //   global_slope_max_ratio, local_slope_max_ratio, continues_checking_cell_num,
+    //   sector_start_cell_index, cell_idx_in_sector);
+    // }
+  }
+}
+
+__device__ void SegmentDiscontinuousCell(
+  const CellCentroid * prev_cells, ClassifiedPointTypeStruct * classify_points,
+  const size_t idx_start_point_of_cell, const size_t num_points_of_cell, const float center_x,
+  const float center_y, const float non_ground_height_threshold, const float detection_range_z_max,
+  const float global_slope_max_ratio, const float local_slope_max_ratio,
+  const int continues_checking_cell_num, const int sector_start_cell_index,
+  const int cell_idx_in_sector)
 {
   void();
 }
 
-__device__ void SegmentDiscontinuousCell(void)
-{
-  void();
-}
-
-__device__ void SegmentBreakCell(void)
+__device__ void SegmentBreakCell(
+  const CellCentroid * prev_cells, ClassifiedPointTypeStruct * classify_points,
+  const size_t idx_start_point_of_cell, const size_t num_points_of_cell, const float center_x,
+  const float center_y, const float non_ground_height_threshold, const float detection_range_z_max,
+  const float global_slope_max_ratio, const float local_slope_max_ratio,
+  const int continues_checking_cell_num, const int sector_start_cell_index,
+  const int cell_idx_in_sector)
 {
   void();
 }
@@ -323,7 +435,8 @@ __global__ void scanPerSectorGroundReferenceKernel(
   const int * num_points_per_cell_dev, CellCentroid * cells_centroid_list_dev,
   int max_num_cells_per_sector, const int * index_start_point_each_cell,
   const float non_ground_height_threshold, const float non_ground_detection_range,
-  const int continues_checking_cell_num)
+  const int continues_checking_cell_num, const int sector_start_cell_index,
+  const int cell_idx_in_sector)
 {
   // Implementation of the kernel
   // scan in each sector from cell_index_in_sector = 0 to max_num_cells_per_sector
