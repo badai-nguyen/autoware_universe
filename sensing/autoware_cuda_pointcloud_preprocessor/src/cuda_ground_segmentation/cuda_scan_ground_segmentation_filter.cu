@@ -214,16 +214,16 @@ __device__ void checkSegmentMode(
   }
   auto previous_cell =
     centroid_cells[sector_idx * max_num_cells_per_sector + cell_idx_in_sector - 1];
+  if (cell_idx_in_sector < continues_checking_cell_num || previous_cell.num_ground_points == 0) {
+    // If the cell index in sector is less than continues_checking_cell_num, we can set the mode to
+    // UNINITIALIZED
+    mode = SegmentationMode::UNINITIALIZED;
+    return;
+  }
   // Check if the previous cell has ground points
   if (previous_cell.num_ground_points > 0) {
     // If the previous cell has ground points, we can set the mode to CONTINUOUS
     mode = SegmentationMode::CONTINUOUS;
-    return;
-  }
-  if (cell_idx_in_sector < continues_checking_cell_num) {
-    // If the cell index in sector is less than continues_checking_cell_num, we can set the mode to
-    // UNINITIALIZED
-    mode = SegmentationMode::DISCONTINUOUS;
     return;
   }
   for (int i = 2; i < continues_checking_cell_num; ++i) {
