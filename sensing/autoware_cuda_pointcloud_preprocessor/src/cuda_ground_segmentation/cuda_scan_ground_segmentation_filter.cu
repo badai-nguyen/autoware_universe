@@ -207,16 +207,17 @@ __device__ void checkSegmentMode(
   const int max_num_cells_per_sector, const int continues_checking_cell_num,
   SegmentationMode & mode)
 {
+  auto sector_start_index = sector_idx * max_num_cells_per_sector;
+  mode = SegmentationMode::UNINITIALIZED;
   if (cell_idx_in_sector == 0) {
     // If this is the first cell in the sector, we need to check the previous cells
-    mode = SegmentationMode::UNINITIALIZED;
     return;
   }
   // UNITIALIZED if all previous cell in the same sector has no ground points
   int prev_gnd_id = cell_idx_in_sector - 1;
   for (prev_gnd_id = cell_idx_in_sector - 1; prev_gnd_id > 0; --prev_gnd_id) {
     // find the latest cell with ground points
-    auto past_cell = centroid_cells[sector_idx * max_num_cells_per_sector + prev_gnd_id];
+    auto past_cell = centroid_cells[sector_start_index + prev_gnd_id];
     if (past_cell.num_ground_points > 0) {
       break;
     }
@@ -237,7 +238,7 @@ __device__ void checkSegmentMode(
       return;
     }
 
-    auto check_cell = centroid_cells[sector_idx * max_num_cells_per_sector + i];
+    auto check_cell = centroid_cells[sector_start_index + i];
     if (check_cell.num_ground_points <= 0) {
       mode = SegmentationMode::DISCONTINUOUS;
       return;  // If any previous cell has no ground points, set mode to DISCONTINUOUS
@@ -248,36 +249,6 @@ __device__ void checkSegmentMode(
   }
 }
 
-__device__ void getSegmentationMode(
-  const CellCentroid * previous_cells, const int continues_checking_cell_num,
-  SegmentationMode & mode)
-{
-  // check if the previous_cells is existing(initialized), num_ground_points < 0 means uninitialized
-  if (
-    previous_cells == nullptr ||
-    previous_cells[continues_checking_cell_num - 1].num_ground_points < 0) {
-    mode = SegmentationMode::UNINITIALIZED;
-    return;
-  }
-
-  // get the back element of previous_cells
-  const CellCentroid & last_cell = previous_cells[continues_checking_cell_num - 1];
-  // check if the last cell has ground points
-  if (last_cell.num_ground_points > 0) {
-    // if the last cell has ground points, set mode to CONTINUOUS
-    mode = SegmentationMode::CONTINUOUS;
-    return;
-  }
-  for (int i = continues_checking_cell_num - 2; i >= 0; --i) {
-    const CellCentroid & cell = previous_cells[i];
-    // if the cell has ground points, set mode to DISCONTINUOUS
-    if (cell.num_ground_points > 0) {
-      mode = SegmentationMode::DISCONTINUOUS;
-      return;
-    }
-  }
-  mode = SegmentationMode::BREAK;  // if no ground points in the previous cells, set mode to BREAK
-}
 
 __global__ void initListPrevGndCells(CellCentroid * prev_cell_centroids, const int num_prev_cells)
 {
