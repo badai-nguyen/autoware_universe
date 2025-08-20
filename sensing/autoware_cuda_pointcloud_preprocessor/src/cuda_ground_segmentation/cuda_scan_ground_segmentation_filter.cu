@@ -353,6 +353,7 @@ __device__ void SegmentContinuousCell(
     cell_idx_in_sector);
   int cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto current_cell = centroid_cells[cell_id];
+  auto prev_cell = centroid_cells[cell_id - 1];
   for (size_t i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
     // 1. height is out-of-range
@@ -360,25 +361,25 @@ __device__ void SegmentContinuousCell(
       point.type = PointType::OUT_OF_RANGE;
       return;  // Skip non-ground points
     }
-    auto dx = point.x - centroid_cells[cell_id - 1].ground_reference_x;
-    auto dy = point.y - centroid_cells[cell_id - 1].ground_reference_y;
-    auto dz = point.z - centroid_cells[cell_id - 1].ground_reference_z;
-    auto radius = sqrtf(dx * dx + dy * dy);
+    auto dx = point.x - prev_cell.ground_reference_x;
+    auto dy = point.y - prev_cell.ground_reference_y;
+    auto dz = point.z - prev_cell.ground_reference_z;
+    auto d_radius = sqrtf(dx * dx + dy * dy);
 
     // 2. the angle is exceed the local slope threshold
-    if (dz / radius > filter_parameters_dev->local_slope_max_ratio) {
+    if (dz / d_radius > filter_parameters_dev->local_slope_max_ratio) {
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
     }
 
     // 3. height from the estimated ground center estimated by local gradient
     float estimated_ground_z =
-      centroid_cells[cell_id - 1].ground_reference_z + local_gradient * radius;
+      prev_cell.ground_reference_z + local_gradient * d_radius;
     if (point.z > estimated_ground_z + filter_parameters_dev->non_ground_height_threshold) {
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
     }
-    if (abs(point.z - estimated_ground_z) < filter_parameters_dev->non_ground_height_threshold) {
+    if (abs(point.z - estimated_ground_z) <= filter_parameters_dev->non_ground_height_threshold) {
       // If the point is close to the estimated ground height, classify it as ground
       point.type = PointType::GROUND;
       addGroundPointToCellCentroid(current_cell, point);
@@ -410,13 +411,12 @@ __device__ void SegmentDiscontinuousCell(
 {
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto current_cell = centroid_cells[cell_id];
-  auto prev_cell = centroid_cells[cell_id - 1];
   auto prev_gnd_cell = centroid_cells[cell_id - 1];
 
   for (int i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
     // 1. height is out-of-range
-    if (point.z - prev_cell.ground_reference_z > filter_parameters_dev->detection_range_z_max) {
+    if (point.z - prev_gnd_cell.ground_reference_z > filter_parameters_dev->detection_range_z_max) {
       point.type = PointType::OUT_OF_RANGE;
       continue;  // Skip non-ground points
     }
@@ -440,14 +440,14 @@ __device__ void SegmentDiscontinuousCell(
     if (abs(dz / d_radius) < filter_parameters_dev->local_slope_max_ratio) {
       // If the point is close to the estimated ground height, classify it as ground
       point.type = PointType::GROUND;
-      addGroundPointToCellCentroid(prev_cell, point);
+      addGroundPointToCellCentroid(current_cell, point);
       continue;  // Mark as ground point
     }
 
     if (abs(dz) < filter_parameters_dev->non_ground_height_threshold) {
       // If the point is close to the estimated ground height, classify it as ground
       point.type = PointType::GROUND;
-      addGroundPointToCellCentroid(prev_cell, point);
+      addGroundPointToCellCentroid(current_cell, point);
       continue;  // Mark as ground point
     }
 
@@ -471,7 +471,6 @@ __device__ void SegmentBreakCell(
 {
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto current_cell = centroid_cells[cell_id];
-  auto prev_cell = centroid_cells[cell_id - 1];
   auto prev_gnd_cell = centroid_cells[cell_id - 1];
   for (int i = cell_idx_in_sector - 1; i > 0; --i) {
     // find the latest cell with ground points
@@ -484,7 +483,7 @@ __device__ void SegmentBreakCell(
   for (int i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
     // 1. height is out-of-range
-    if (point.z - prev_cell.ground_reference_z > filter_parameters_dev->detection_range_z_max) {
+    if (point.z - prev_gnd_cell.ground_reference_z > filter_parameters_dev->detection_range_z_max) {
       point.type = PointType::OUT_OF_RANGE;
       continue;  // Skip non-ground points
     }
@@ -508,7 +507,7 @@ __device__ void SegmentBreakCell(
     if (abs(dz / d_radius) < filter_parameters_dev->global_slope_max_ratio) {
       // If the point is close to the estimated ground height, classify it as ground
       point.type = PointType::GROUND;
-      addGroundPointToCellCentroid(prev_cell, point);
+      addGroundPointToCellCentroid(current_cell, point);
       continue;  // Mark as ground point
     }
     if (dz / d_radius < -filter_parameters_dev->global_slope_max_ratio) {
