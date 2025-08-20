@@ -179,6 +179,7 @@ void GridGroundFilter::initializeGround(pcl::PointIndices & out_no_ground_indice
       cell.avg_radius_ = ground_bin.getAverageRadius();
       cell.max_height_ = ground_bin.getMaxHeight();
       cell.min_height_ = ground_bin.getMinHeight();
+      // TODO: confirmed this is correct, the original should be the local gradient
       cell.gradient_ = std::clamp(
         cell.avg_height_ / cell.avg_radius_, -param_.global_slope_max_ratio,
         param_.global_slope_max_ratio);
