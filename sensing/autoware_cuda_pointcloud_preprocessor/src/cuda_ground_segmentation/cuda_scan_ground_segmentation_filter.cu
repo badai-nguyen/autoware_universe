@@ -187,12 +187,14 @@ __device__ void addGroundPointToCellCentroid(
   cell.ground_reference_z = cell.ground_reference_z * cell.num_ground_points + point.z;
   cell.ground_reference_x = cell.ground_reference_x * cell.num_ground_points + point.x;
   cell.ground_reference_y = cell.ground_reference_y * cell.num_ground_points + point.y;
+  cell.radius_avg = cell.radius_avg * cell.num_ground_points + point.radius;
 
   cell.num_ground_points++;
 
   cell.ground_reference_x = cell.ground_reference_x / cell.num_ground_points;
   cell.ground_reference_y = cell.ground_reference_y / cell.num_ground_points;
   cell.ground_reference_z = cell.ground_reference_z / cell.num_ground_points;
+  cell.radius_avg = cell.radius_avg / cell.num_ground_points;
 }
 
 __device__ void updatePrevCellCentroid(const CellCentroid & current, CellCentroid & previous)
@@ -249,7 +251,6 @@ __device__ void checkSegmentMode(
   }
 }
 
-
 __global__ void initListPrevGndCells(CellCentroid * prev_cell_centroids, const int num_prev_cells)
 {
   // Initialize the previous cell centroids
@@ -280,18 +281,16 @@ __device__ float calcLocalGndGradient(
   if (continues_checking_cell_num < 2) {
     return 0.0f;  // Not enough data to calculate gradient
   }
+  auto cell_id = sector_start_index + cell_idx_in_sector;
 
-  float orig_z =
-    centroid_cells[sector_start_index + cell_idx_in_sector - continues_checking_cell_num]
-      .ground_reference_z;
-  float orig_radius =
-    centroid_cells[sector_start_index + cell_idx_in_sector - continues_checking_cell_num].radius_avg;
+  float orig_z = centroid_cells[cell_id - continues_checking_cell_num].ground_reference_z;
+  float orig_radius = centroid_cells[cell_id - continues_checking_cell_num].radius_avg;
   float dz = 0.0f;
   float dr = 0.0f;
   float gradient = 0.0f;
 
   for (int i = 1; i < continues_checking_cell_num; ++i) {
-    const auto & prev_cell = centroid_cells[sector_start_index + cell_idx_in_sector - i];
+    const auto prev_cell = centroid_cells[cell_id - i];
     dz = prev_cell.ground_reference_z - orig_z;
     dr = prev_cell.radius_avg - orig_radius;
     gradient += dz / dr;
@@ -348,7 +347,7 @@ __device__ void SegmentContinuousCell(
   const int cell_idx_in_sector)
 {
   // compare point of current cell with previous cell center by local slope angle
-  auto local_gradient = calcLocalGndGradient(
+  auto gnd_gradient = calcLocalGndGradient(
     centroid_cells, filter_parameters_dev->gnd_cell_buffer_size, sector_start_cell_index,
     cell_idx_in_sector);
   int cell_id = sector_start_cell_index + cell_idx_in_sector;
@@ -361,10 +360,9 @@ __device__ void SegmentContinuousCell(
       point.type = PointType::OUT_OF_RANGE;
       return;  // Skip non-ground points
     }
-    auto dx = point.x - prev_cell.ground_reference_x;
-    auto dy = point.y - prev_cell.ground_reference_y;
+
+    auto d_radius = point.radius - prev_cell.radius_avg;
     auto dz = point.z - prev_cell.ground_reference_z;
-    auto d_radius = sqrtf(dx * dx + dy * dy);
 
     // 2. the angle is exceed the local slope threshold
     if (dz / d_radius > filter_parameters_dev->local_slope_max_ratio) {
@@ -373,8 +371,7 @@ __device__ void SegmentContinuousCell(
     }
 
     // 3. height from the estimated ground center estimated by local gradient
-    float estimated_ground_z =
-      prev_cell.ground_reference_z + local_gradient * d_radius;
+    float estimated_ground_z = prev_cell.ground_reference_z + gnd_gradient * d_radius;
     if (point.z > estimated_ground_z + filter_parameters_dev->non_ground_height_threshold) {
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
@@ -412,6 +409,9 @@ __device__ void SegmentDiscontinuousCell(
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto current_cell = centroid_cells[cell_id];
   auto prev_gnd_cell = centroid_cells[cell_id - 1];
+  if (prev_gnd_cell.num_ground_points <= 0) {
+    return;
+  }
 
   for (int i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
@@ -421,10 +421,8 @@ __device__ void SegmentDiscontinuousCell(
       continue;  // Skip non-ground points
     }
     // 2. the angle is exceed the local slope threshold
-    auto dx = point.x - prev_gnd_cell.ground_reference_x;
-    auto dy = point.y - prev_gnd_cell.ground_reference_y;
     auto dz = point.z - prev_gnd_cell.ground_reference_z;
-    auto d_radius = sqrtf(dx * dx + dy * dy);
+    auto d_radius = point.radius - prev_gnd_cell.radius_avg;
 
     // 2. the angle is exceed the local slope threshold
     if (dz / point.radius > filter_parameters_dev->global_slope_max_ratio) {
