@@ -273,7 +273,7 @@ __global__ void initListPrevGndCells(CellCentroid * prev_cell_centroids, const i
 }
 
 __device__ float calcLocalGndGradient(
-  const CellCentroid * current_cells, const int continues_checking_cell_num,
+  const CellCentroid * centroid_cells, const int continues_checking_cell_num,
   const int sector_start_index, const int cell_idx_in_sector)
 {
   // Calculate the local ground gradient based on the previous cells
@@ -282,16 +282,16 @@ __device__ float calcLocalGndGradient(
   }
 
   float orig_z =
-    current_cells[sector_start_index + cell_idx_in_sector - continues_checking_cell_num]
+    centroid_cells[sector_start_index + cell_idx_in_sector - continues_checking_cell_num]
       .ground_reference_z;
   float orig_radius =
-    current_cells[sector_start_index + cell_idx_in_sector - continues_checking_cell_num].radius_avg;
+    centroid_cells[sector_start_index + cell_idx_in_sector - continues_checking_cell_num].radius_avg;
   float dz = 0.0f;
   float dr = 0.0f;
   float gradient = 0.0f;
 
   for (int i = 1; i < continues_checking_cell_num; ++i) {
-    const auto & prev_cell = current_cells[sector_start_index + cell_idx_in_sector - i];
+    const auto & prev_cell = centroid_cells[sector_start_index + cell_idx_in_sector - i];
     dz = prev_cell.ground_reference_z - orig_z;
     dr = prev_cell.radius_avg - orig_radius;
     gradient += dz / dr;
