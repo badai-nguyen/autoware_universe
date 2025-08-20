@@ -324,7 +324,8 @@ __device__ void SegmentInitializedCell(
   const FilterParameters * filter_parameters_dev, const int sector_start_cell_index,
   const int cell_idx_in_sector)
 {
-  auto current_cell = centroid_cells[sector_start_cell_index + cell_idx_in_sector];
+  auto cell_id = sector_start_cell_index + cell_idx_in_sector;
+  auto current_cell = centroid_cells[cell_id];
   for (size_t i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
     // Check if the point is ground
@@ -344,6 +345,16 @@ __device__ void SegmentInitializedCell(
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
     }
+    auto dx = point.x - centroid_cells[cell_id - 1].ground_reference_x;
+    auto dy = point.y - centroid_cells[cell_id - 1].ground_reference_y;
+    auto dz = point.z - centroid_cells[cell_id - 1].ground_reference_z;
+    auto radius = sqrtf(dx * dx + dy * dy);
+
+    // 2. the angle is exceed the local slope threshold
+    if (dz / radius > filter_parameters_dev->global_slope_max_ratio) {
+      point.type = PointType::NON_GROUND;
+      continue;  // Skip non-ground points
+    }
     point.type = PointType::GROUND;  // Mark as ground point
     addGroundPointToCellCentroid(current_cell, point);
   }
@@ -359,7 +370,7 @@ __device__ void SegmentContinuousCell(
     centroid_cells, filter_parameters_dev->gnd_cell_buffer_size, sector_start_cell_index,
     cell_idx_in_sector);
   int cell_id = sector_start_cell_index + cell_idx_in_sector;
-  auto current_cell = centroid_cells[sector_start_cell_index + cell_idx_in_sector];
+  auto current_cell = centroid_cells[cell_id];
   for (size_t i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
     // 1. height is out-of-range
