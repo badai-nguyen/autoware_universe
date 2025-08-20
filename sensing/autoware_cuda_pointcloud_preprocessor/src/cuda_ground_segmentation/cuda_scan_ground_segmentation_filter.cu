@@ -288,15 +288,25 @@ __device__ float calcLocalGndGradient(
   float dz = 0.0f;
   float dr = 0.0f;
   float gradient = 0.0f;
+  int valid_gradients = 0;
 
+  // Calculate gradients from reference to each valid previous cell
   for (int i = 1; i < continues_checking_cell_num; ++i) {
-    const auto prev_cell = centroid_cells[cell_id - i];
-    dz = prev_cell.ground_reference_z - orig_z;
-    dr = prev_cell.radius_avg - orig_radius;
-    gradient += dz / dr;
+    const auto & prev_cell = centroid_cells[cell_id - i];
+    if (prev_cell.num_ground_points > 0) {
+      float dz = prev_cell.ground_reference_z - orig_z;
+      float dr = prev_cell.radius_avg - orig_radius;
+
+      // Avoid division by zero
+      if (fabsf(dr) > 1e-6f) {
+        gradient += dz / dr;
+        valid_gradients++;
+      }
+    }
   }
-  gradient /= continues_checking_cell_num - 1;  // Average the gradient ratio
-  return gradient;
+
+  // Return average gradient if we have valid data
+  return (valid_gradients > 0) ? (gradient / valid_gradients) : 0.0f;
 }
 
 __device__ void SegmentInitializedCell(
