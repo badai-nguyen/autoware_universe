@@ -147,6 +147,8 @@ struct FilterParameters
   int max_num_cells;
   uint16_t gnd_cell_buffer_size;
   float virtual_lidar_z;
+  float center_x{0.0f};
+  float center_y{0.0f};
 };
 
 class CudaScanGroundSegmentationFilter
@@ -163,6 +165,8 @@ public:
   size_t number_input_points_;
   size_t input_pointcloud_step_;
   size_t input_xyzi_offset_[4];
+  float center_x_{0.0f};
+  float center_y_{0.0f};
 
   // Parameters
   FilterParameters filter_parameters_;
