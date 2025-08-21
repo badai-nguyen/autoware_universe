@@ -104,8 +104,8 @@ struct CellCentroid
     gnd_avg_z(0.0f),
     gnd_avg_x(0.0f),
     gnd_avg_y(0.0f),
-    gnd_max_z(-INFINITY),
-    gnd_min_z(INFINITY),
+    gnd_max_z(-1e6f),
+    gnd_min_z(1e6f),
     num_ground_points(0)
   {
   }
