@@ -193,17 +193,15 @@ private:
   void assignPointToClassifyPoint(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     const CellCentroid * cells_centroid_list_dev, const FilterParameters * filter_parameters_dev,
-    int * cell_counts_dev, const int * num_points_per_cell_dev,
-    const int * cell_start_point_idx_dev, ClassifiedPointTypeStruct * classified_points_dev);
+    int * cell_counts_dev, ClassifiedPointTypeStruct * classified_points_dev);
 
   void getCellStartPointIndex(
     const FilterParameters * filter_parameters_dev, CellCentroid * cells_centroid_list_dev,
-    int * num_points_per_cell_dev, int * max_num_point_dev, int * cell_start_point_idx_dev);
+    int * num_points_per_cell_dev, int * cell_start_point_idx_dev);
   void sortPointsInCells(
     const int * num_points_per_cell_dev, ClassifiedPointTypeStruct * classified_points_dev);
   void scanPerSectorGroundReference(
-    ClassifiedPointTypeStruct * classified_points_dev, const int * num_points_per_cell_dev,
-    CellCentroid * cells_centroid_list_dev, const int * cell_start_point_idx_dev,
+    ClassifiedPointTypeStruct * classified_points_dev, CellCentroid * cells_centroid_list_dev,
     const FilterParameters * filter_parameters_dev);
 
   /*
@@ -229,7 +227,7 @@ private:
    */
   void addPointToCells(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
-    CellCentroid * indices_list_dev);
+    CellCentroid * indices_list_dev, const FilterParameters * filter_parameters_dev);
 
   cudaStream_t ground_segment_stream_{};
   cudaMemPool_t mem_pool_{};
