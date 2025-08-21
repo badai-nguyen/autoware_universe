@@ -281,13 +281,13 @@ __device__ float calcLocalGndGradient(
 }
 
 __device__ void SegmentInitializedCell(
-  const CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
+  CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
   const size_t idx_start_point_of_cell, const size_t num_points_of_cell,
   const FilterParameters * filter_parameters_dev, const int sector_start_cell_index,
   const int cell_idx_in_sector)
 {
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
-  auto current_cell = centroid_cells[cell_id];
+  auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
   for (size_t i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
     // Check if the point is ground
@@ -322,7 +322,7 @@ __device__ void SegmentInitializedCell(
   }
 }
 __device__ void SegmentContinuousCell(
-  const CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
+  CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
   const size_t idx_start_point_of_cell, const size_t num_points_of_cell,
   const FilterParameters * filter_parameters_dev, const int sector_start_cell_index,
   const int cell_idx_in_sector)
@@ -332,8 +332,8 @@ __device__ void SegmentContinuousCell(
     centroid_cells, filter_parameters_dev->gnd_cell_buffer_size, sector_start_cell_index,
     cell_idx_in_sector);
   int cell_id = sector_start_cell_index + cell_idx_in_sector;
-  auto current_cell = centroid_cells[cell_id];
-  auto prev_cell = centroid_cells[cell_id - 1];
+  auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
+  auto & prev_cell = centroid_cells[cell_id - 1];
   for (size_t i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
     // 1. height is out-of-range
@@ -388,15 +388,15 @@ __device__ void SegmentContinuousCell(
 }
 
 __device__ void SegmentDiscontinuousCell(
-  const CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
+  CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
   const size_t idx_start_point_of_cell, const size_t num_points_of_cell,
   const FilterParameters * filter_parameters_dev, const int sector_start_cell_index,
   const int cell_idx_in_sector)
 {
   return;
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
-  auto current_cell = centroid_cells[cell_id];
-  auto prev_gnd_cell = centroid_cells[cell_id - 1];
+  auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
+  auto & prev_gnd_cell = centroid_cells[cell_id - 1];
   if (prev_gnd_cell.num_ground_points <= 0) {
     return;
   }
@@ -450,7 +450,7 @@ __device__ void SegmentDiscontinuousCell(
 }
 
 __device__ void SegmentBreakCell(
-  const CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
+  CellCentroid * centroid_cells, ClassifiedPointTypeStruct * classify_points,
   const size_t idx_start_point_of_cell, const size_t num_points_of_cell,
   const FilterParameters * filter_parameters_dev, const int sector_start_cell_index,
   const int cell_idx_in_sector)
@@ -458,11 +458,11 @@ __device__ void SegmentBreakCell(
   return;
   // This function is called when the cell is not continuous with the previous cell
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
-  auto current_cell = centroid_cells[cell_id];
-  auto prev_gnd_cell = centroid_cells[cell_id - 1];
+  auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
+  auto & prev_gnd_cell = centroid_cells[cell_id - 1];
   for (int i = cell_idx_in_sector - 1; i > 0; --i) {
     // find the latest cell with ground points
-    auto prev_cell = centroid_cells[sector_start_cell_index + i];
+    auto & prev_cell = centroid_cells[sector_start_cell_index + i];
     if (prev_cell.num_ground_points > 0) {
       prev_gnd_cell = centroid_cells[sector_start_cell_index + i];
       break;
@@ -978,7 +978,7 @@ void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
   returnBufferToPool(indices_dev);
 }
 
-void CudaScanGroundSegmentationFilter::getIndexStartPointPerCell(
+void CudaScanGroundSegmentationFilter::getCellStartPointIndex(
   const FilterParameters * filter_parameters_dev, CellCentroid * cells_centroid_list_dev,
   int * num_points_per_cell_dev, int * max_num_point_dev, int * cell_start_point_idx_dev)
 {
@@ -1060,7 +1060,7 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   CHECK_CUDA_ERROR(cudaMalloc(&cell_start_point_idx_dev, max_num_cells * sizeof(int)));
   CHECK_CUDA_ERROR(cudaMalloc(&max_num_point_dev, sizeof(int)));
 
-  getIndexStartPointPerCell(
+  getCellStartPointIndex(
     filter_parameters_dev, cells_centroid_list_dev, num_points_per_cell_dev, max_num_point_dev,
     cell_start_point_idx_dev);
 
