@@ -18,12 +18,7 @@ namespace autoware::cuda_pointcloud_preprocessor
 {
 
 using autoware::vehicle_info_utils::VehicleInfo;
-enum SegmentationMode : uint8_t {
-  UNINITIALIZED = 0,
-  CONTINUOUS,
-  DISCONTINUOUS,
-  BREAK
-};
+enum SegmentationMode : uint8_t { UNINITIALIZED = 0, CONTINUOUS, DISCONTINUOUS, BREAK };
 
 struct PointTypeStruct
 {
@@ -84,16 +79,17 @@ struct ClassifiedPointTypeStruct
 
 struct CellCentroid
 {
+  int cell_id;  // cell_id = sector_id * number_cells_per_sector + grid_index
+  int num_points;
+  size_t start_point_index;  // start index of points in classified_points_dev
   float radius_avg;
   float height_avg;
   float height_max;
   float height_min;
-  size_t num_ground_points;
-  float ground_reference_z;
-  float ground_reference_x;
-  float ground_reference_y;
-  int num_points;
-  int cell_id;  // cell_id = sector_id * number_cells_per_sector + grid_index
+  float gnd_avg_z;
+  float gnd_avg_x;
+  float gnd_avg_y;
+  int num_ground_points;
   // initialize constructor
   CellCentroid()
   : radius_avg(0.0f),
@@ -101,11 +97,12 @@ struct CellCentroid
     height_max(0.0f),
     height_min(0.0f),
     num_ground_points(0),
-    ground_reference_z(0.0f),
-    ground_reference_x(0.0f),
-    ground_reference_y(0.0f),
+    gnd_avg_z(0.0f),
+    gnd_avg_x(0.0f),
+    gnd_avg_y(0.0f),
     num_points(0),
-    cell_id(0)
+    cell_id(0),
+    start_point_index(0)
   {
   }
 };
