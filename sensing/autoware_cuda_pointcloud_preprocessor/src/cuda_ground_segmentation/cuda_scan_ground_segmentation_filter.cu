@@ -471,11 +471,6 @@ __device__ void SegmentDiscontinuousCell(
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
     }
-    if (dz / d_radius > filter_parameters_dev->global_slope_max_ratio) {
-      // If the point is above the estimated ground height, classify it as non-ground
-      point.type = PointType::NON_GROUND;
-      continue;  // Skip non-ground points
-    }
 
     if (dz / d_radius < -filter_parameters_dev->local_slope_max_ratio) {
       // If the point is below the estimated ground height, classify it as non-ground
@@ -511,11 +506,10 @@ __device__ void SegmentBreakCell(
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
   int prev_gnd_cell_idx = cell_idx_in_sector - 1;
-  for (int i = cell_idx_in_sector - 1; i > 0; --i) {
+  for (; prev_gnd_cell_idx > 0; --prev_gnd_cell_idx) {
     // find the latest cell with ground points
-    auto & prev_cell = centroid_cells[sector_start_cell_index + i];
+    auto & prev_cell = centroid_cells[sector_start_cell_index + prev_gnd_cell_idx];
     if (prev_cell.num_ground_points > 0) {
-      prev_gnd_cell_idx = i;
       break;
     }
   }
@@ -523,10 +517,10 @@ __device__ void SegmentBreakCell(
   for (int i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
     // 1. height is out-of-range
-    // if (point.z - prev_gnd_cell.gnd_avg_z > filter_parameters_dev->detection_range_z_max) {
-    //   point.type = PointType::OUT_OF_RANGE;
-    //   continue;  // Skip non-ground points
-    // }
+    if (point.z - prev_gnd_cell.gnd_avg_z > filter_parameters_dev->detection_range_z_max) {
+      point.type = PointType::OUT_OF_RANGE;
+      continue;  // Skip non-ground points
+    }
     // 2. the angle is exceed the local slope threshold
     auto dx = point.x - prev_gnd_cell.gnd_avg_x;
     auto dy = point.y - prev_gnd_cell.gnd_avg_y;
@@ -544,7 +538,12 @@ __device__ void SegmentBreakCell(
       continue;  // Skip non-ground points
     }
 
-    if (dz / d_radius < -filter_parameters_dev->global_slope_max_ratio) {
+    if (point.z / point.radius < -filter_parameters_dev->global_slope_max_ratio) {
+      // If the point is below the estimated ground height, classify it as non-ground
+      point.type = PointType::OUT_OF_RANGE;
+      continue;  // Skip non-ground points
+    }
+    if (dz / d_radius < -filter_parameters_dev->local_slope_max_ratio) {
       // If the point is below the estimated ground height, classify it as non-ground
       point.type = PointType::OUT_OF_RANGE;
       continue;  // Skip non-ground points
@@ -642,15 +641,15 @@ __global__ void CellsCentroidInitializeKernel(
   }
   cells_centroid_list_dev[idx].radius_avg = 0.0f;
   cells_centroid_list_dev[idx].height_avg = 0.0f;
-  cells_centroid_list_dev[idx].height_max = -FLT_MAX;
-  cells_centroid_list_dev[idx].height_min = FLT_MAX;
+  cells_centroid_list_dev[idx].height_max = -1e6f;  // Initialize to a very low value
+  cells_centroid_list_dev[idx].height_min = 1e6f;   // Initialize to a very high value
   cells_centroid_list_dev[idx].num_points = 0;
   cells_centroid_list_dev[idx].cell_id = -1;  // Initialize cell_id to -1
   cells_centroid_list_dev[idx].gnd_avg_z = 0.0f;
   cells_centroid_list_dev[idx].gnd_avg_x = 0.0f;
   cells_centroid_list_dev[idx].gnd_avg_y = 0.0f;
-  cells_centroid_list_dev[idx].gnd_max_z = -FLT_MAX;
-  cells_centroid_list_dev[idx].gnd_min_z = FLT_MAX;
+  cells_centroid_list_dev[idx].gnd_max_z = -1e6f;
+  cells_centroid_list_dev[idx].gnd_min_z = 1e6f;
   cells_centroid_list_dev[idx].num_ground_points = 0;
   cells_centroid_list_dev[idx].start_point_index = 0;
 }
