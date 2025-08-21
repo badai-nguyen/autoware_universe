@@ -987,8 +987,7 @@ void CudaScanGroundSegmentationFilter::assignPointToClassifyPoint(
 // ============= Extract non-ground points =============
 void CudaScanGroundSegmentationFilter::extractNonGroundPoints(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
-  ClassifiedPointTypeStruct * classified_points_dev, const int max_num_cells,
-  const int * cell_start_point_idx_dev, PointTypeStruct * output_points_dev,
+  ClassifiedPointTypeStruct * classified_points_dev, PointTypeStruct * output_points_dev,
   size_t * num_output_points_host)
 {
   if (number_input_points_ == 0) {
@@ -1138,7 +1137,7 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
 
   int * num_points_per_cell_dev;  // array of num_points for each cell
   int * cell_start_point_idx_dev;
-  int max_num_cells = filter_parameters_.max_num_cells_per_sector * filter_parameters_.num_sectors;
+  int max_num_cells = filter_parameters_.max_num_cells;
 
   CHECK_CUDA_ERROR(cudaMalloc(&num_points_per_cell_dev, max_num_cells * sizeof(int)));
   CHECK_CUDA_ERROR(cudaMalloc(&cell_start_point_idx_dev, max_num_cells * sizeof(int)));
@@ -1178,8 +1177,7 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
 
   // Extract obstacle points from classified_points_dev
   extractNonGroundPoints(
-    input_points, classified_points_dev, max_num_cells, cell_start_point_idx_dev, output_points_dev,
-    &num_output_points);
+    input_points, classified_points_dev, output_points_dev, &num_output_points);
 
   // // mark valid points based on height threshold
 
