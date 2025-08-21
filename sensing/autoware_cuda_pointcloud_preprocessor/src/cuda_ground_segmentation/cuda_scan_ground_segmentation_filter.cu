@@ -268,7 +268,7 @@ __device__ void checkSegmentMode(
 
 __device__ float calcLocalGndGradient(
   const CellCentroid * centroid_cells, const int continues_checking_cell_num,
-  const int sector_start_index, const int cell_idx_in_sector)
+  const int sector_start_index, const int cell_idx_in_sector, const float gradient_threshold)
 {
   // Calculate the local ground gradient based on the previous cells
   if (continues_checking_cell_num < 2) {
@@ -296,8 +296,13 @@ __device__ float calcLocalGndGradient(
     }
   }
 
-  // Return average gradient if we have valid data
-  return (valid_gradients > 0) ? (gradient / valid_gradients) : 0.0f;
+  if (valid_gradients == 0) {
+    return 0.0f;  // No valid gradients found
+  }
+  gradient /= valid_gradients;
+  gradient = gradient > gradient_threshold ? gradient_threshold : gradient;    // Clamp to threshold
+  gradient = gradient < -gradient_threshold ? -gradient_threshold : gradient;  // Clamp to threshold
+  return gradient;  // Return average gradient
 }
 
 __device__ void recheckCell(
@@ -342,27 +347,19 @@ __device__ void SegmentInitializedCell(
       point.type = PointType::OUT_OF_RANGE;
       continue;  // Skip non-ground points
     }
-    // 2. height is exceed the non-ground height threshold
-    // if (point.z > filter_parameters_dev->non_ground_height_threshold) {
-    //   point.type = PointType::NON_GROUND;
-    //   continue;  // Skip non-ground points
-    // }
-    if (point.z / point.radius > filter_parameters_dev->global_slope_max_ratio) {
+    if (
+      point.z / point.radius > filter_parameters_dev->global_slope_max_ratio &&
+      point.z > filter_parameters_dev->non_ground_height_threshold) {
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
     }
-    // auto dx = point.x - centroid_cells[cell_id - 1].gnd_avg_x;
-    // auto dy = point.y - centroid_cells[cell_id - 1].gnd_avg_y;
-    // auto dz = point.z - centroid_cells[cell_id - 1].gnd_avg_z;
-    // auto radius = sqrtf(dx * dx + dy * dy);
-
-    // // 2. the angle is exceed the local slope threshold
-    // if (dz / radius > filter_parameters_dev->global_slope_max_ratio) {
-    //   point.type = PointType::NON_GROUND;
-    //   continue;  // Skip non-ground points
-    // }
-    point.type = PointType::GROUND;  // Mark as ground point
-    updateGndPointInCell(current_cell, point);
+    if (
+      abs(point.z / point.radius) < filter_parameters_dev->global_slope_max_ratio &&
+      abs(point.z) < filter_parameters_dev->non_ground_height_threshold) {
+      // If the point is close to the estimated ground height, classify it as ground
+      point.type = PointType::GROUND;  // Mark as ground point
+      updateGndPointInCell(current_cell, point);
+    }
   }
 
   if (
@@ -383,7 +380,7 @@ __device__ void SegmentContinuousCell(
   // compare point of current cell with previous cell center by local slope angle
   auto gnd_gradient = calcLocalGndGradient(
     centroid_cells, filter_parameters_dev->gnd_cell_buffer_size, sector_start_cell_index,
-    cell_idx_in_sector);
+    cell_idx_in_sector, filter_parameters_dev->global_slope_max_ratio);
   int cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
   auto & prev_cell = centroid_cells[cell_id - 1];
@@ -399,7 +396,7 @@ __device__ void SegmentContinuousCell(
     auto dz = point.z - prev_cell.gnd_avg_z;
 
     // 2. the angle is exceed the global slope threshold
-    if (dz / point.radius > filter_parameters_dev->global_slope_max_ratio) {
+    if (point.z / point.radius > filter_parameters_dev->global_slope_max_ratio) {
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
     }
@@ -411,7 +408,8 @@ __device__ void SegmentContinuousCell(
     }
 
     // 3. height from the estimated ground center estimated by local gradient
-    float estimated_ground_z = prev_cell.gnd_avg_z + gnd_gradient * d_radius;
+    float estimated_ground_z =
+      prev_cell.gnd_avg_z + gnd_gradient * filter_parameters_dev->cell_divider_size_m;
     if (point.z > estimated_ground_z + filter_parameters_dev->non_ground_height_threshold) {
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
@@ -421,7 +419,10 @@ __device__ void SegmentContinuousCell(
     //   continue;  // Mark as ground point
     // }
 
-    if (point.z < estimated_ground_z - filter_parameters_dev->non_ground_height_threshold) {
+    if (
+      point.z < estimated_ground_z - filter_parameters_dev->non_ground_height_threshold ||
+      dz / d_radius < -filter_parameters_dev->local_slope_max_ratio ||
+      point.z / point.radius < -filter_parameters_dev->global_slope_max_ratio) {
       // If the point is below the estimated ground height, classify it as non-ground
       point.type = PointType::OUT_OF_RANGE;
       continue;  // Skip non-ground points
@@ -474,13 +475,23 @@ __device__ void SegmentDiscontinuousCell(
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
     }
+    if (dz / d_radius > filter_parameters_dev->global_slope_max_ratio) {
+      // If the point is above the estimated ground height, classify it as non-ground
+      point.type = PointType::NON_GROUND;
+      continue;  // Skip non-ground points
+    }
 
     if (dz / d_radius < -filter_parameters_dev->local_slope_max_ratio) {
       // If the point is below the estimated ground height, classify it as non-ground
       point.type = PointType::OUT_OF_RANGE;
       continue;  // Skip non-ground points
     }
-    point.type = PointType::GROUND;
+    if (point.z / point.radius < -filter_parameters_dev->global_slope_max_ratio) {
+      // If the point is below the estimated ground height, classify it as non-ground
+      point.type = PointType::OUT_OF_RANGE;
+      continue;  // Skip non-ground points
+    }
+    point.type = PointType::GROUND;  // Mark as ground point
     updateGndPointInCell(current_cell, point);
   }
 

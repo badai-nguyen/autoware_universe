@@ -89,6 +89,8 @@ struct CellCentroid
   float gnd_avg_z;
   float gnd_avg_x;
   float gnd_avg_y;
+  float gnd_max_z;
+  float gnd_min_z;
   int num_ground_points;
   // initialize constructor
   CellCentroid()
@@ -102,6 +104,8 @@ struct CellCentroid
     gnd_avg_z(0.0f),
     gnd_avg_x(0.0f),
     gnd_avg_y(0.0f),
+    gnd_max_z(-INFINITY),
+    gnd_min_z(INFINITY),
     num_ground_points(0)
   {
   }
@@ -192,7 +196,7 @@ private:
     int * cell_counts_dev, const int * num_points_per_cell_dev,
     const int * cell_start_point_idx_dev, ClassifiedPointTypeStruct * classified_points_dev);
 
-  void getIndexStartPointPerCell(
+  void getCellStartPointIndex(
     const FilterParameters * filter_parameters_dev, CellCentroid * cells_centroid_list_dev,
     int * num_points_per_cell_dev, int * max_num_point_dev, int * cell_start_point_idx_dev);
   void sortPointsInCells(
@@ -221,7 +225,7 @@ private:
    * @param input_points The input point cloud data.
    * @param indices_list_dev point to device memory where array of radial division indices will be
    * stored.
-   * @note This function assumes that the input point cloud is already allocated in device memory.
+   * @note This function assumes that the input point cloud is already allocated in device memory.f
    */
   void addPointToCells(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
