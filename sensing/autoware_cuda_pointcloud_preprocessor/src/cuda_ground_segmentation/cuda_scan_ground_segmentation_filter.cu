@@ -4,6 +4,7 @@
 
 #include <sensor_msgs/msg/point_field.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -336,7 +337,7 @@ __device__ void SegmentInitializedCell(
   auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
   for (size_t i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
-    
+
     // 1. height is out-of-range
     if (
       point.z > filter_parameters_dev->detection_range_z_max ||
@@ -344,7 +345,7 @@ __device__ void SegmentInitializedCell(
       point.type = PointType::OUT_OF_RANGE;
       continue;
     }
-    
+
     // 3. Check global slope ratio
     float slope_ratio = point.z / point.radius;
     if (
@@ -353,7 +354,7 @@ __device__ void SegmentInitializedCell(
       point.type = PointType::NON_GROUND;
       continue;
     }
-    
+
     // 4. Check if point meets ground criteria
     if (
       abs(slope_ratio) < filter_parameters_dev->global_slope_max_ratio &&
@@ -511,7 +512,7 @@ __device__ void SegmentBreakCell(
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
   int prev_gnd_cell_idx = cell_idx_in_sector - 1;
-  
+
   // Find the latest cell with ground points (including cell 0)
   for (; prev_gnd_cell_idx >= 0; --prev_gnd_cell_idx) {
     auto & prev_cell = centroid_cells[sector_start_cell_index + prev_gnd_cell_idx];
@@ -522,18 +523,18 @@ __device__ void SegmentBreakCell(
   auto & prev_gnd_cell = centroid_cells[sector_start_cell_index + prev_gnd_cell_idx];
   for (int i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
-    
+
     // 1. height is out-of-range
     if (point.z - prev_gnd_cell.gnd_avg_z > filter_parameters_dev->detection_range_z_max) {
       point.type = PointType::OUT_OF_RANGE;
       continue;
     }
-    
+
     // 2. Check for division by zero before slope calculations
     if (point.radius < 1e-6f) {
       continue;
     }
-    
+
     auto dz = point.z - prev_gnd_cell.gnd_avg_z;
     auto d_radius = point.radius - prev_gnd_cell.radius_avg;
 
@@ -547,7 +548,7 @@ __device__ void SegmentBreakCell(
       point.type = PointType::OUT_OF_RANGE;
       continue;
     }
-    
+
     // 4. Local slope check (with division by zero protection)
     if (abs(d_radius) > 1e-6f) {
       float local_slope = dz / d_radius;
@@ -560,7 +561,7 @@ __device__ void SegmentBreakCell(
         continue;
       }
     }
-    
+
     // 5. Point passes all checks - classify as ground
     point.type = PointType::GROUND;
     updateGndPointInCell(current_cell, point);
@@ -834,12 +835,21 @@ void CudaScanGroundSegmentationFilter::scanPerSectorGroundReference(
 {
   const int num_sectors = filter_parameters_.num_sectors;
 
-  dim3 block_dim(num_sectors);
+  // Validate parameters to prevent invalid kernel launch configurations
+  if (num_sectors == 0) {
+    return;  // No sectors to process
+  }
+
+  // Ensure block size doesn't exceed CUDA limits (max 1024 threads per block)
+  const int max_threads_per_block = 1024;
+  dim3 block_dim(std::min(num_sectors, max_threads_per_block));
   dim3 grid_dim((num_sectors + block_dim.x - 1) / block_dim.x);
+
   // Launch the kernel to scan for ground points in each sector
   scanPerSectorGroundReferenceKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
     classified_points_dev, num_points_per_cell_dev, cells_centroid_list_dev,
     cell_start_point_idx_dev, filter_parameters_dev);
+  CHECK_CUDA_ERROR(cudaGetLastError());
   CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
 }
 
@@ -916,6 +926,12 @@ void CudaScanGroundSegmentationFilter::addPointToCells(
   if (number_input_points_ == 0) {
     return;  // No points to process
   }
+
+  // Additional validation for kernel parameters
+  if (filter_parameters_.max_num_cells == 0) {
+    return;  // No cells to initialize
+  }
+
   const auto * input_points_dev =
     reinterpret_cast<const PointTypeStruct *>(input_points->data.get());
   const float center_x = filter_parameters_.center_pcl_shift;
@@ -925,15 +941,20 @@ void CudaScanGroundSegmentationFilter::addPointToCells(
   // Each thread will process one point and calculate its angle and distance from the center
 
   dim3 block_dim(512);
-  dim3 grid_dim((number_input_points_ + block_dim.x - 1) / block_dim.x);
+
+  // For CellsCentroidInitializeKernel: grid size based on max_num_cells
+  dim3 cells_grid_dim((filter_parameters_.max_num_cells + block_dim.x - 1) / block_dim.x);
+
+  // For CellCentroidUpdateKernel: grid size based on number_input_points_
+  dim3 points_grid_dim((number_input_points_ + block_dim.x - 1) / block_dim.x);
 
   // initialize the list of cells centroid
-  CellsCentroidInitializeKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
+  CellsCentroidInitializeKernel<<<cells_grid_dim, block_dim, 0, ground_segment_stream_>>>(
     cells_centroid_list_dev, filter_parameters_.max_num_cells);
   CHECK_CUDA_ERROR(cudaGetLastError());
 
   auto max_cells_num = filter_parameters_.max_num_cells;
-  CellCentroidUpdateKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
+  CellCentroidUpdateKernel<<<points_grid_dim, block_dim, 0, ground_segment_stream_>>>(
     input_points_dev, number_input_points_, center_x, center_y, filter_parameters_.sector_angle_rad,
     filter_parameters_.max_radius, filter_parameters_.max_num_cells_per_sector, max_cells_num,
     filter_parameters_.num_sectors, filter_parameters_.cell_divider_size_m,
@@ -1048,6 +1069,11 @@ void CudaScanGroundSegmentationFilter::getCellStartPointIndex(
   const FilterParameters * filter_parameters_dev, CellCentroid * cells_centroid_list_dev,
   int * num_points_per_cell_dev, int * max_num_point_dev, int * cell_start_point_idx_dev)
 {
+  // Validate parameters to prevent invalid kernel launch configurations
+  if (filter_parameters_.max_num_cells == 0 || filter_parameters_.num_sectors == 0) {
+    return;  // No cells or sectors to process
+  }
+
   void * d_temp_storage = nullptr;
 
   size_t temp_storage_bytes = 0;
