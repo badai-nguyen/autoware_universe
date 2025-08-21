@@ -92,17 +92,17 @@ struct CellCentroid
   int num_ground_points;
   // initialize constructor
   CellCentroid()
-  : radius_avg(0.0f),
+  : cell_id(0),
+    num_points(0),
+    start_point_index(0),
+    radius_avg(0.0f),
     height_avg(0.0f),
     height_max(0.0f),
     height_min(0.0f),
-    num_ground_points(0),
     gnd_avg_z(0.0f),
     gnd_avg_x(0.0f),
     gnd_avg_y(0.0f),
-    num_points(0),
-    cell_id(0),
-    start_point_index(0)
+    num_ground_points(0)
   {
   }
 };
@@ -186,21 +186,21 @@ private:
    * Memory size of each cell is depend on predefined cell point num
    *
    */
-  void assignPointToCell(
+  void assignPointToClassifyPoint(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
-    const CellCentroid * cells_centroid_list_dev, int * splitPointToCells, const int max_num_cells,
-    const int * num_points_per_cell_dev, const int * index_start_point_each_cell,
-    ClassifiedPointTypeStruct * classified_points_dev);
+    const CellCentroid * cells_centroid_list_dev, const FilterParameters * filter_parameters_dev,
+    int * cell_counts_dev, const int * num_points_per_cell_dev,
+    const int * cell_start_point_idx_dev, ClassifiedPointTypeStruct * classified_points_dev);
 
   void getIndexStartPointPerCell(
-    const int num_sectors, const int max_num_cells, CellCentroid * cells_centroid_list_dev,
-    int * num_points_per_cell_dev, int * max_num_point_dev, int * index_start_point_each_cell);
+    const FilterParameters * filter_parameters_dev, CellCentroid * cells_centroid_list_dev,
+    int * num_points_per_cell_dev, int * max_num_point_dev, int * cell_start_point_idx_dev);
   void sortPointsInCells(
     const int * num_points_per_cell_dev, ClassifiedPointTypeStruct * classified_points_dev);
   void scanPerSectorGroundReference(
     ClassifiedPointTypeStruct * classified_points_dev, const int * num_points_per_cell_dev,
-    CellCentroid * cells_centroid_list_dev, const int * index_start_point_each_cell,
-    CellCentroid * prev_cell_centroids);
+    CellCentroid * cells_centroid_list_dev, const int * cell_start_point_idx_dev,
+    const FilterParameters * filter_parameters_dev);
 
   /*
    * Extract obstacle points from classified_points_dev into
@@ -208,7 +208,7 @@ private:
   void extractNonGroundPoints(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
     ClassifiedPointTypeStruct * classified_points_dev, const int max_num_cells,
-    const int * index_start_point_each_cell, PointTypeStruct * output_points_dev,
+    const int * cell_start_point_idx_dev, PointTypeStruct * output_points_dev,
     size_t * num_output_points_host);
 
   void getObstaclePointcloud(
