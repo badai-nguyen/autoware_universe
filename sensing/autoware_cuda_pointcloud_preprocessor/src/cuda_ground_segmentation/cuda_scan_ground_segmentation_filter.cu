@@ -231,38 +231,34 @@ __device__ void checkSegmentMode(
   }
   // UNITIALIZED if all previous cell in the same sector has no ground points
   int prev_cell_id_in_sector = cell_idx_in_sector - 1;
-  for (prev_cell_id_in_sector = cell_idx_in_sector - 1; prev_cell_id_in_sector > 0;
-       --prev_cell_id_in_sector) {
+  for (; prev_cell_id_in_sector >= 0; --prev_cell_id_in_sector) {
     // find the latest cell with ground points
     auto prev_cell_in_sector = centroid_cells[sector_start_index + prev_cell_id_in_sector];
     if (prev_cell_in_sector.num_ground_points > 0) {
       break;
     }
   }
-  if (prev_cell_id_in_sector == 0) {
+  if (prev_cell_id_in_sector < 0) {
     // If no previous cell has ground points, set mode to UNINITIALIZED
     mode = SegmentationMode::UNINITIALIZED;
     return;
   }
-  // If previous cell has no points, set mode to BREAK
+
+  // If previous cell has no points (there's a gap), set mode to BREAK
   if (prev_cell_id_in_sector < cell_idx_in_sector - 1) {
     mode = SegmentationMode::BREAK;
+    return;
   }
-  // if all continuous checking previous cells has points, set mode to CONTINUOUS
-  for (int i = cell_idx_in_sector - 1; i > cell_idx_in_sector - continues_checking_cell_num; --i) {
-    if (i < 0) {
-      mode = SegmentationMode::DISCONTINUOUS;
-      return;
-    }
 
-    auto check_cell = centroid_cells[sector_start_index + i];
-    if (check_cell.num_ground_points <= 0) {
+  // Check if all continuous checking previous cells have points for CONTINUOUS mode
+  mode = SegmentationMode::CONTINUOUS;
+  for (int i = cell_idx_in_sector - 1;
+       i > cell_idx_in_sector - continues_checking_cell_num && i >= 0; --i) {
+    auto & check_cell = centroid_cells[sector_start_index + i];
+    if (check_cell.num_ground_points == 0) {
       mode = SegmentationMode::DISCONTINUOUS;
       return;  // If any previous cell has no ground points, set mode to DISCONTINUOUS
     }
-    // If all previous cells have ground points, set mode to CONTINUOUS
-    mode = SegmentationMode::CONTINUOUS;
-    return;
   }
 }
 
