@@ -150,6 +150,7 @@ struct FilterParameters
   float virtual_lidar_z;
   float center_x{0.0f};
   float center_y{0.0f};
+  const uint16_t gnd_grid_continual_thresh{3};  // threshold for continual ground grid
 };
 
 class CudaScanGroundSegmentationFilter
@@ -168,6 +169,7 @@ public:
   size_t input_xyzi_offset_[4];
   float center_x_{0.0f};
   float center_y_{0.0f};
+  const uint16_t gnd_grid_continual_thresh_{3};  // threshold for continual ground grid
 
   // Parameters
   FilterParameters filter_parameters_;
