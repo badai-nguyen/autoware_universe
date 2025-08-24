@@ -1,12 +1,12 @@
 
-#include "autoware/cuda_pointcloud_preprocessor/cuda_ground_segmentation/cuda_scan_ground_segmentation_filter_node.hpp"
+#include "autoware/cuda_scan_ground_segmentation/cuda_scan_ground_segmentation_filter_node.hpp"
 
 #include "autoware/pointcloud_preprocessor/utility/memory.hpp"
 
 #include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
 
-namespace autoware::cuda_pointcloud_preprocessor
+namespace autoware::cuda_ground_segmentation
 {
 
 using autoware::vehicle_info_utils::VehicleInfoUtils;
@@ -97,8 +97,8 @@ void CudaScanGroundSegmentationFilterNode::cudaPointCloudCallback(
   pub_->publish(std::move(non_ground_pointcloud_ptr_));
 }
 
-}  // namespace autoware::cuda_pointcloud_preprocessor
+}  // namespace autoware::cuda_ground_segmentation
 
 #include "rclcpp_components/register_node_macro.hpp"
 RCLCPP_COMPONENTS_REGISTER_NODE(
-  autoware::cuda_pointcloud_preprocessor::CudaScanGroundSegmentationFilterNode)
+  autoware::cuda_ground_segmentation::CudaScanGroundSegmentationFilterNode)

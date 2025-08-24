@@ -1,6 +1,6 @@
 
-#ifndef AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_GROUND_SEGMENTATION__CUDA_SCAN_GROUND_SEGMENTATION_FILTER_HPP_
-#define AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_GROUND_SEGMENTATION__CUDA_SCAN_GROUND_SEGMENTATION_FILTER_HPP_
+#ifndef AUTOWARE__CUDA_GROUND_SEGMENTATION__CUDA_SCAN_GROUND_SEGMENTATION_FILTER_HPP_
+#define AUTOWARE__CUDA_GROUND_SEGMENTATION__CUDA_SCAN_GROUND_SEGMENTATION_FILTER_HPP_
 
 #include <autoware/cuda_pointcloud_preprocessor/point_types.hpp>
 #include <autoware/cuda_utils/cuda_check_error.hpp>
@@ -14,7 +14,7 @@
 #include <iostream>
 #include <memory>
 
-namespace autoware::cuda_pointcloud_preprocessor
+namespace autoware::cuda_ground_segmentation
 {
 
 using autoware::vehicle_info_utils::VehicleInfo;
@@ -205,6 +205,6 @@ private:
   cudaStream_t ground_segment_stream_{};
   cudaMemPool_t mem_pool_{};
 };
-}  // namespace autoware::cuda_pointcloud_preprocessor
+}  // namespace autoware::cuda_ground_segmentation
 
-#endif  // AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_GROUND_SEGMENTATION__CUDA_SCAN_GROUND_SEGMENTATION_FILTER_HPP_
+#endif  // AUTOWARE__CUDA_GROUND_SEGMENTATION__CUDA_SCAN_GROUND_SEGMENTATION_FILTER_HPP_
