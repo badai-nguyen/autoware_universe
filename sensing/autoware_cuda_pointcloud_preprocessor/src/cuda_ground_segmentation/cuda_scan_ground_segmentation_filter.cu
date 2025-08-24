@@ -229,7 +229,7 @@ __device__ void checkSegmentMode(
     return;
   }
   const auto & front_gnd_idx_in_sector = latest_gnd_cells_in_sector[num_latest_gnd_cells - 1];
-  if (num_latest_gnd_cells >= 1 || cell_index_in_sector - front_gnd_idx_in_sector <= gnd_cell_buffer_size) {
+  if (cell_index_in_sector - front_gnd_idx_in_sector <= gnd_cell_buffer_size) {
     mode = SegmentationMode::CONTINUOUS;  // If the latest ground cell is within threshold, set mode
                                           // to CONTINUOUS
     return;
@@ -298,6 +298,7 @@ __device__ void RecusiveGndCellSearch(
   if (cell.num_ground_points > 0) {
     // If the cell has enough ground points, add it to the list
     latest_gnd_cells_in_sector[num_latest_gnd_cells++] = cell_index_in_sector;
+    // latest_gnd_cells_in_sector[0] is the latest ground cell in the sector, closest to the current sector
   }
 
   // Continue searching in the previous cell
@@ -493,7 +494,7 @@ __device__ void SegmentContinuousCell(
     filter_parameters_dev);
   int cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
-  auto & prev_gnd_cell = centroid_cells[latest_gnd_cells_in_sector[0]];
+  auto & prev_gnd_cell = centroid_cells[sector_start_cell_index + latest_gnd_cells_in_sector[0]];
   auto const prev_cell_gnd_height = prev_gnd_cell.gnd_avg_z;
   
   for (size_t i = 0; i < num_points_of_cell; ++i) {
@@ -514,7 +515,7 @@ __device__ void SegmentContinuousCell(
     }
 
     // 2. the angle is exceed the local slope threshold
-    if (dz / d_radius > filter_parameters_dev->local_slope_max_ratio) {
+    if (dz > filter_parameters_dev->local_slope_max_ratio * d_radius) {
       point.type = PointType::NON_GROUND;
       continue;  // Skip non-ground points
     }
@@ -566,7 +567,7 @@ __device__ void SegmentDiscontinuousCell(
 {
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
-  auto & prev_gnd_cell = centroid_cells[latest_gnd_cells_in_sector[0]];
+  auto & prev_gnd_cell = centroid_cells[sector_start_cell_index + latest_gnd_cells_in_sector[0]];
 
   for (int i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
@@ -624,7 +625,8 @@ __device__ void SegmentBreakCell(
   // This function is called when the cell is not continuous with the previous cell
   auto cell_id = sector_start_cell_index + cell_idx_in_sector;
   auto & current_cell = centroid_cells[cell_id];  // Use reference, not copy
-  auto & prev_gnd_cell = centroid_cells[latest_gnd_cells_in_sector[0]];
+
+  auto & prev_gnd_cell = centroid_cells[sector_start_cell_index + latest_gnd_cells_in_sector[0]];
 
   for (int i = 0; i < num_points_of_cell; ++i) {
     auto & point = classify_points[idx_start_point_of_cell + i];
