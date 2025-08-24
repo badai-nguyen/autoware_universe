@@ -538,8 +538,8 @@ def launch_setup(context, *args, **kwargs):
         )
         components.append(
             ComposableNode(
-                package="autoware_cuda_pointcloud_preprocessor",
-                plugin="autoware::cuda_pointcloud_preprocessor::CudaScanGroundSegmentationFilterNode",
+                package="autoware_ground_segmentation_cuda",
+                plugin="autoware::cuda_ground_segmentation::CudaScanGroundSegmentationFilterNode",
                 name="cuda_scan_ground_segmentation_filter",
                 remappings=[
                     ("~/input/pointcloud", "/sensing/lidar/concatenated/pointcloud"),
