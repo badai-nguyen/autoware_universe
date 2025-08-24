@@ -81,7 +81,7 @@ __device__ inline int getCellID(
 
 __global__ void initPoints(ClassifiedPointTypeStruct * arr, int N)
 {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= N) return;
   arr[idx].z = 0.0f;
   arr[idx].type = PointType::INIT;
@@ -91,7 +91,7 @@ __global__ void initPoints(ClassifiedPointTypeStruct * arr, int N)
 
 __global__ void setFlagsKernel(int * flags, int n, const int value)
 {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) flags[i] = value;  // write real int 0 or 1
 }
 
@@ -99,7 +99,7 @@ __global__ void getCellNumPointsKernel(
   const CellCentroid * __restrict__ cells_centroid_list_dev, const size_t num_cells,
   int * __restrict__ num_points_per_cell)
 {
-  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= num_cells) {
     return;  // Out of bounds
   }
@@ -726,7 +726,7 @@ __global__ void sortPointsInCellsKernel(
 __global__ void CellsCentroidInitializeKernel(
   CellCentroid * cells_centroid_list_dev, const int max_num_cells)
 {
-  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= max_num_cells) {
     return;  // Out of bounds
   }
@@ -832,7 +832,7 @@ __global__ void updateCellStartPointIndexKernel(
   CellCentroid * cells_centroid_list_dev, const int * cell_first_point_indices_dev,
   const int max_num_cells)
 {
-  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= max_num_cells) {
     return;  // Out of bounds
   }
