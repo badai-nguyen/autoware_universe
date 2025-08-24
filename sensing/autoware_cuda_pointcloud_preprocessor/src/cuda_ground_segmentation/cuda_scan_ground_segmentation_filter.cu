@@ -662,7 +662,7 @@ __device__ void SegmentBreakCell(
 
 __global__ void scanPerSectorGroundReferenceKernel(
   ClassifiedPointTypeStruct * classified_points_dev, CellCentroid * cells_centroid_list_dev,
-  const FilterParameters * filter_parameters_dev)
+  const FilterParameters * filter_parameters_dev, int * latest_gnd_cells_dev)
 {
   // Implementation of the kernel
   // scan in each sector from cell_index_in_sector = 0 to max_num_cells_per_sector
@@ -688,15 +688,14 @@ __global__ void scanPerSectorGroundReferenceKernel(
     // declare the points to stogare the gnd cells indexes in the sector
     // this is used to store the ground cells in the sector for line fitting
     // the size of the array is gnd_cell_buffer_size
-    int * latest_gnd_cells_in_sector = new int[filter_parameters_dev->gnd_cell_buffer_size];
+    assert(cell_id >= 0 && cell_id < filter_parameters_dev->max_num_cells);
+    int * latest_gnd_cells_in_sector = &latest_gnd_cells_dev[cell_id * filter_parameters_dev->gnd_cell_buffer_size];
     int num_latest_gnd_cells = 0;
     // get the latest gnd cells in the sector
-    for (int i = 0; i < filter_parameters_dev->gnd_cell_buffer_size; ++i) {
-      latest_gnd_cells_in_sector[i] = -1;  // Initialize with -1 (invalid index)
-    }
+ 
     RecusiveGndCellSearch(
-      cells_centroid_list_dev, filter_parameters_dev->gnd_cell_buffer_size, sector_start_cell_index - 1,
-      cell_index_in_sector, latest_gnd_cells_in_sector, num_latest_gnd_cells);
+      cells_centroid_list_dev, filter_parameters_dev->gnd_cell_buffer_size, sector_start_cell_index,
+      cell_index_in_sector - 1, latest_gnd_cells_in_sector, num_latest_gnd_cells);
 
     // checkSegmentMode(
     //   cells_centroid_list_dev, cell_index_in_sector, sector_start_cell_index,
@@ -727,8 +726,6 @@ __global__ void scanPerSectorGroundReferenceKernel(
         num_points_in_cell, filter_parameters_dev, sector_start_cell_index, cell_index_in_sector,
         latest_gnd_cells_in_sector, num_latest_gnd_cells);
     }
-    delete[] latest_gnd_cells_in_sector;  // Clean up the dynamically allocated array
-
     // if the first round of scan
   }
 }
@@ -940,7 +937,7 @@ void CudaScanGroundSegmentationFilter::sortPointsInCells(
 // ============ Scan per sector to get ground reference =============
 void CudaScanGroundSegmentationFilter::scanPerSectorGroundReference(
   ClassifiedPointTypeStruct * classified_points_dev, CellCentroid * cells_centroid_list_dev,
-  const FilterParameters * filter_parameters_dev)
+  const FilterParameters * filter_parameters_dev, int * latest_gnd_cells_dev)
 {
   const int num_sectors = filter_parameters_.num_sectors;
 
@@ -956,7 +953,7 @@ void CudaScanGroundSegmentationFilter::scanPerSectorGroundReference(
 
   // Launch the kernel to scan for ground points in each sector
   scanPerSectorGroundReferenceKernel<<<grid_dim, block_dim, 0, ground_segment_stream_>>>(
-    classified_points_dev, cells_centroid_list_dev, filter_parameters_dev);
+    classified_points_dev, cells_centroid_list_dev, filter_parameters_dev, latest_gnd_cells_dev);
   CHECK_CUDA_ERROR(cudaGetLastError());
   CHECK_CUDA_ERROR(cudaStreamSynchronize(ground_segment_stream_));
 }
@@ -1251,6 +1248,7 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
 
   int * num_points_per_cell_dev;  // array of num_points for each cell
   int * cell_start_point_idx_dev;
+
   int max_num_cells = filter_parameters_.max_num_cells;
 
   CHECK_CUDA_ERROR(cudaMalloc(&num_points_per_cell_dev, max_num_cells * sizeof(int)));
@@ -1274,6 +1272,11 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   CHECK_CUDA_ERROR(
     cudaMemsetAsync(cell_counts_dev, 0, max_num_cells * sizeof(int), ground_segment_stream_));
 
+  
+  int * latest_gnd_cells_dev;
+  CHECK_CUDA_ERROR(cudaMalloc(&latest_gnd_cells_dev, max_num_cells * filter_parameters_.gnd_cell_buffer_size * sizeof(int)));
+  CHECK_CUDA_ERROR(cudaMemsetAsync(latest_gnd_cells_dev, -1, max_num_cells * filter_parameters_.gnd_cell_buffer_size * sizeof(int), ground_segment_stream_));
+
   assignPointToClassifyPoint(
     input_points, cells_centroid_list_dev, filter_parameters_dev, cell_counts_dev,
     classified_points_dev);
@@ -1287,7 +1290,7 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   // allocate gnd_grid_buffer_size of CentroidCells memory for  previous cell centroids
 
   scanPerSectorGroundReference(
-    classified_points_dev, cells_centroid_list_dev, filter_parameters_dev);
+    classified_points_dev, cells_centroid_list_dev, filter_parameters_dev, latest_gnd_cells_dev);
 
   // Extract obstacle points from classified_points_dev
   extractNonGroundPoints(
@@ -1299,6 +1302,7 @@ CudaScanGroundSegmentationFilter::classifyPointcloud(
   returnBufferToPool(filter_parameters_dev);
   returnBufferToPool(cells_centroid_list_dev);
   returnBufferToPool(classified_points_dev);
+  returnBufferToPool(latest_gnd_cells_dev);
 
   filtered_output->header = input_points->header;
   filtered_output->height = 1;  // Set height to 1 for unorganized point cloud
