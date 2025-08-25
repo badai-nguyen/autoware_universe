@@ -47,13 +47,7 @@ struct ClassifiedPointTypeStruct
   float radius;
   size_t origin_index;  // index in the original point cloud
 
-  ClassifiedPointTypeStruct()
-  : z(0.0),
-    type(PointType::INIT),
-    radius(-1.0),
-    origin_index(0)
-  {
-  }
+  ClassifiedPointTypeStruct() : z(0.0), type(PointType::INIT), radius(-1.0), origin_index(0) {}
 };
 
 struct CellCentroid
@@ -104,7 +98,7 @@ struct FilterParameters
   // common parameters
   float sector_angle_rad;  // radial sector angle in radians
   float inv_sector_angle_rad;
-  size_t num_sectors;      // number of radial sectors
+  int num_sectors;  // number of radial sectors
   VehicleInfo vehicle_info;
 
   // cell mode parameters
