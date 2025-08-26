@@ -624,7 +624,7 @@ def generate_launch_description():
     add_launch_arg(
         "cuda_ground_segmentation_node_param_path",
         [
-            FindPackageShare("autoware_cuda_pointcloud_preprocessor"),
+            FindPackageShare("autoware_ground_segmentation_cuda"),
             "/config/cuda_scan_ground_segmentation_filter.param.yaml",
         ],
     )
