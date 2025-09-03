@@ -512,6 +512,10 @@ __device__ void SegmentContinuousCell(
 
   float gnd_gradient;
   float y_intercept;
+  const auto & local_slope_ratio_threshold = filter_parameters_dev->local_slope_max_ratio;
+  const auto & global_slope_ratio_threshold = filter_parameters_dev->global_slope_max_ratio;
+  const auto & non_ground_height_threshold = filter_parameters_dev->non_ground_height_threshold;
+
   fitLineFromGndCell(
     sector_cells_list_dev, last_gnd_cells_indices_dev, num_latest_gnd_cells, filter_parameters_dev,
     gnd_gradient, y_intercept);
@@ -530,44 +534,38 @@ __device__ void SegmentContinuousCell(
       return;
     }
 
-    auto d_radius =
+    auto delta_radius =
       point.radius - prev_gnd_cell.gnd_radius_avg + filter_parameters_dev->cell_divider_size_m;
-    auto dz = point.z - prev_gnd_cell.gnd_height_avg;
+    auto delta_z = point.z - prev_gnd_cell.gnd_height_avg;
 
     // 2. the angle is exceed the global slope threshold
-    if (point.z > filter_parameters_dev->global_slope_max_ratio * point.radius) {
+    if (point.z > global_slope_ratio_threshold * point.radius) {
       point.type = PointType::NON_GROUND;
       continue;
     }
 
     // 2. the angle is exceed the local slope threshold
-    if (dz > filter_parameters_dev->local_slope_max_ratio * d_radius) {
-      point.type = PointType::NON_GROUND;
+    if (fabsf(delta_z) < local_slope_ratio_threshold * delta_radius) {
+      point.type = PointType::GROUND;
+      updateGndPointInCell(current_cell, point);
       continue;
     }
 
     // 3. height from the estimated ground center estimated by local gradient
-    float estimated_ground_z = gnd_gradient * point.radius + y_intercept;
-    if (point.z > estimated_ground_z + filter_parameters_dev->non_ground_height_threshold) {
+    const float estimated_gnd_z = gnd_gradient * point.radius + y_intercept;
+    const float gnd_z_local_thresh = local_slope_ratio_threshold * delta_radius;
+    const float delta_gnd_z = point.z - estimated_gnd_z;
+    const float gnd_z_threshold = non_ground_height_threshold + gnd_z_local_thresh;
+
+    if (delta_gnd_z > gnd_z_threshold) {
       point.type = PointType::NON_GROUND;
       continue;
     }
-    // if (abs(point.z - estimated_ground_z) <= filter_parameters_dev->non_ground_height_threshold)
-    // {
-    //   continue;  // Mark as ground point
-    // }
-
-    if (
-      point.z < estimated_ground_z - filter_parameters_dev->non_ground_height_threshold ||
-      dz < -filter_parameters_dev->local_slope_max_ratio * d_radius ||
-      point.z < -filter_parameters_dev->global_slope_max_ratio * point.radius) {
-      // If the point is below the estimated ground height, classify it as non-ground
-      point.type = PointType::OUT_OF_RANGE;
+    if (fabsf(delta_gnd_z) <= gnd_z_threshold) {
+      point.type = PointType::GROUND;
+      updateGndPointInCell(current_cell, point);
       continue;
     }
-    // If the point is close to the estimated ground height, classify it as ground
-    point.type = PointType::GROUND;
-    updateGndPointInCell(current_cell, point);
   }
 
   if (
@@ -593,7 +591,7 @@ __device__ void SegmentContinuousCell(
  * sector.
  * @param cell_classify_points_dev      Device pointer to the array of points to classify within the
  * cell.
- * @param filter_parameters_dev         Device pointer to the filter parameters structure.
+ * @param params         Device pointer to the filter parameters structure.
  * @param cell_idx_in_sector            Index of the current cell within the sector.
  * @param last_gnd_cells_indices_dev    Device pointer to the array of indices for the latest ground
  * cells.
@@ -603,7 +601,7 @@ __device__ void SegmentContinuousCell(
 __device__ void SegmentDiscontinuousCell(
   CellCentroid * __restrict__ sector_cells_list_dev,
   ClassifiedPointTypeStruct * __restrict__ cell_classify_points_dev,
-  const FilterParameters * __restrict__ filter_parameters_dev, const uint32_t cell_idx_in_sector,
+  const FilterParameters * __restrict__ params, const uint32_t cell_idx_in_sector,
   const uint32_t * last_gnd_cells_indices_dev, const uint32_t num_latest_gnd_cells)
 {
   auto cell_id = cell_idx_in_sector;
@@ -615,44 +613,42 @@ __device__ void SegmentDiscontinuousCell(
   for (uint32_t i = 0; i < num_points_of_cell; ++i) {
     size_t point_idx = static_cast<size_t>(i);
     auto & point = cell_classify_points_dev[point_idx];
+    const auto delta_avg_z = point.z - prev_gnd_cell.gnd_height_avg;
     // 1. height is out-of-range
-    if (point.z - prev_gnd_cell.gnd_height_avg > filter_parameters_dev->detection_range_z_max) {
+    if (delta_avg_z > params->detection_range_z_max) {
       point.type = PointType::OUT_OF_RANGE;
       continue;
     }
     // 2. the angle is exceed the global slope threshold
-    auto dz = point.z - prev_gnd_cell.gnd_height_avg;
-    auto d_radius =
-      point.radius - prev_gnd_cell.gnd_radius_avg + filter_parameters_dev->cell_divider_size_m;
-    float global_height_threshold = point.radius * filter_parameters_dev->global_slope_max_ratio;
-    float local_height_threshold = filter_parameters_dev->local_slope_max_ratio * d_radius;
-    if (point.z > global_height_threshold) {
+    if (point.z > params->global_slope_max_ratio * point.radius) {
       point.type = PointType::NON_GROUND;
       continue;
     }
-    if (dz > local_height_threshold) {
+    // 3. Check local slope ratio
+    auto delta_radius = point.radius - prev_gnd_cell.gnd_radius_avg + params->cell_divider_size_m;
+    float global_height_threshold = point.radius * params->global_slope_max_ratio;
+    float local_height_threshold = params->local_slope_max_ratio * delta_radius;
+    if (fabsf(delta_avg_z) < local_height_threshold) {
+      point.type = PointType::GROUND;
+      updateGndPointInCell(current_cell, point);
+      continue;
+    }
+    if (fabsf(delta_avg_z) < params->non_ground_height_threshold) {
+      point.type = PointType::GROUND;
+      updateGndPointInCell(current_cell, point);
+      continue;
+    }
+    if (delta_avg_z >= local_height_threshold) {
       point.type = PointType::NON_GROUND;
       continue;
     }
-    // 3. local slope
-    if (dz < -local_height_threshold) {
-      point.type = PointType::OUT_OF_RANGE;
-      continue;
-    }
-    if (point.z < -global_height_threshold) {
-      // If the point is below the estimated ground height, classify it as non-ground
-      point.type = PointType::OUT_OF_RANGE;
-      continue;
-    }
-    point.type = PointType::GROUND;  // Mark as ground point
-    updateGndPointInCell(current_cell, point);
   }
 
   if (
-    filter_parameters_dev->use_recheck_ground_cluster == 1 && current_cell.num_ground_points > 1 &&
-    current_cell.gnd_radius_avg > filter_parameters_dev->recheck_start_distance) {
+    params->use_recheck_ground_cluster == 1 && current_cell.num_ground_points > 1 &&
+    current_cell.gnd_radius_avg > params->recheck_start_distance) {
     // Recheck the ground points in the cell
-    recheckCell(current_cell, cell_classify_points_dev, filter_parameters_dev);
+    recheckCell(current_cell, cell_classify_points_dev, params);
   }
 }
 
@@ -668,7 +664,7 @@ __device__ void SegmentDiscontinuousCell(
  * (device memory).
  * @param cell_classify_points_dev      Pointer to the array of points to classify within the cell
  * (device memory).
- * @param filter_parameters_dev         Pointer to the filter parameters structure (device memory).
+ * @param params         Pointer to the filter parameters structure (device memory).
  * @param cell_idx_in_sector            Index of the current cell within the sector.
  * @param last_gnd_cells_indices_dev    Pointer to the array containing indices of the latest ground
  * cells (device memory).
@@ -678,7 +674,7 @@ __device__ void SegmentDiscontinuousCell(
 __device__ void SegmentBreakCell(
   CellCentroid * __restrict__ sector_cells_list_dev,
   ClassifiedPointTypeStruct * __restrict__ cell_classify_points_dev,
-  const FilterParameters * __restrict__ filter_parameters_dev, const uint32_t cell_idx_in_sector,
+  const FilterParameters * __restrict__ params, const uint32_t cell_idx_in_sector,
   const uint32_t * last_gnd_cells_indices_dev, const uint32_t num_latest_gnd_cells)
 {
   // This function is called when the cell is not continuous with the previous cell
@@ -690,33 +686,36 @@ __device__ void SegmentBreakCell(
 
   for (uint32_t i = 0; i < num_points_of_cell; ++i) {
     auto & point = cell_classify_points_dev[i];
-
+    auto delta_z = point.z - prev_gnd_cell.gnd_height_avg;
     // 1. height is out-of-range
-    if (point.z - prev_gnd_cell.gnd_height_avg > filter_parameters_dev->detection_range_z_max) {
+    if (delta_z > params->detection_range_z_max) {
       point.type = PointType::OUT_OF_RANGE;
       continue;
     }
 
-    auto dz = point.z - prev_gnd_cell.gnd_height_avg;
-    auto d_radius = point.radius - prev_gnd_cell.gnd_radius_avg;
-    float global_height_threshold = d_radius * filter_parameters_dev->global_slope_max_ratio;
-    // 3. Global slope check
-    if (dz > global_height_threshold) {
+    // 2. the angle is exceed the global slope threshold
+    if (point.z > params->global_slope_max_ratio * point.radius) {
       point.type = PointType::NON_GROUND;
       continue;
     }
-    if (dz < -global_height_threshold) {
-      point.type = PointType::OUT_OF_RANGE;
+    // 3. the point is over discontinuous
+    auto delta_radius = point.radius - prev_gnd_cell.gnd_radius_avg;
+    float global_height_threshold = delta_radius * params->global_slope_max_ratio;
+    if (fabsf(delta_z) < global_height_threshold) {
+      point.type = PointType::GROUND;
+      updateGndPointInCell(current_cell, point);
       continue;
     }
-    point.type = PointType::GROUND;
-    updateGndPointInCell(current_cell, point);
+    if (delta_z >= global_height_threshold) {
+      point.type = PointType::NON_GROUND;
+      continue;
+    }
   }
   if (
-    filter_parameters_dev->use_recheck_ground_cluster == 1 && current_cell.num_ground_points > 1 &&
-    current_cell.gnd_radius_avg > filter_parameters_dev->recheck_start_distance) {
+    params->use_recheck_ground_cluster == 1 && current_cell.num_ground_points > 1 &&
+    current_cell.gnd_radius_avg > params->recheck_start_distance) {
     // Recheck the ground points in the cell
-    recheckCell(current_cell, cell_classify_points_dev, filter_parameters_dev);
+    recheckCell(current_cell, cell_classify_points_dev, params);
   }
 }
 /**
