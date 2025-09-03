@@ -314,26 +314,27 @@ __device__ void RecursiveGndCellSearch(
  * @return The slope (a) of the fitted line. If fitting is not possible, returns 0.0f.
  */
 
-__device__ float fitLineFromGndCell(
+__device__ void fitLineFromGndCell(
   const CellCentroid * __restrict__ sector_cells_list_dev,
   const uint32_t * last_gnd_cells_indices_dev, const uint32_t num_fitting_cells,
-  const FilterParameters * __restrict__ filter_parameters_dev)
+  const FilterParameters * __restrict__ filter_parameters_dev, float & gradient,
+  float & y_intercept)
 {
-  float a = 0.0f;
-  // float b = 0.0f;
+  gradient = 0.0f;
+  y_intercept = 0.0f;
 
   if (num_fitting_cells == 0) {
-    a = 0.0f;  // No fitting cells, set to zero
-    // b = 0.0f;  // No fitting cells, set to zero
-    return a;  // No fitting cells, return zero slope
+    gradient = 0.0f;     // No fitting cells, set to zero
+    y_intercept = 0.0f;  // No fitting cells, set to zero
+    return;              // No fitting cells, return zero slope
   }
 
   if (num_fitting_cells == 1) {
     auto cell_idx_in_sector = last_gnd_cells_indices_dev[0];
     const auto & cell = sector_cells_list_dev[cell_idx_in_sector];
-    a = cell.gnd_height_avg / cell.gnd_radius_avg;
-    // b = 0.0f;  // Only one point, no line fitting needed
-    return a;  // Return the slope based on the single point
+    gradient = cell.gnd_height_avg / cell.gnd_radius_avg;
+    y_intercept = 0.0f;  // Only one point, no line fitting needed
+    return;              // Return the slope based on the single point
   }
 
   // calculate the line by least squares method
@@ -355,20 +356,18 @@ __device__ float fitLineFromGndCell(
   if (fabsf(denominator) < 1e-6f) {
     const auto & cell_idx_in_sector = last_gnd_cells_indices_dev[0];
     const auto & cell = sector_cells_list_dev[cell_idx_in_sector];
-    a = cell.gnd_height_avg / cell.gnd_radius_avg;
-    // b = 0.0f;
-    return a;  // If denominator is zero, return slope based on the first cell
+    gradient = cell.gnd_height_avg / cell.gnd_radius_avg;
+    y_intercept = 0.0f;
+    return;  // If denominator is zero, return slope based on the first cell
   } else {
-    a = (num_fitting_cells * sum_xy - sum_x * sum_y) / denominator;  // slope
-    a = a > filter_parameters_dev->global_slope_max_ratio
-          ? filter_parameters_dev->global_slope_max_ratio
-          : a;  // Clamp to threshold
-    a = a < -filter_parameters_dev->global_slope_max_ratio
-          ? -filter_parameters_dev->global_slope_max_ratio
-          : a;  // Clamp to threshold
-    // b = (sum_y * sum_xx - sum_x * sum_xy) / denominator;  // intercept
+    gradient = (num_fitting_cells * sum_xy - sum_x * sum_y) / denominator;  // slope
+    // Clamp gradient to the maximum allowed slope ratio using CUDA's fmaxf/fminf
+    gradient = fmaxf(
+      fminf(gradient, filter_parameters_dev->local_slope_max_angle_rad),
+      -filter_parameters_dev->global_slope_max_ratio);
+    y_intercept = (sum_y * sum_xx - sum_x * sum_xy) / denominator;
   }
-  return a;
+  return;
 }
 /**
  * @brief Rechecks the classification of points within a cell to ensure ground points meet height
@@ -511,8 +510,11 @@ __device__ void SegmentContinuousCell(
   //   centroid_cells, filter_parameters_dev->gnd_cell_buffer_size, sector_start_cell_index,
   //   cell_idx_in_sector, filter_parameters_dev->global_slope_max_ratio);
 
-  auto gnd_gradient = fitLineFromGndCell(
-    sector_cells_list_dev, last_gnd_cells_indices_dev, num_latest_gnd_cells, filter_parameters_dev);
+  float gnd_gradient;
+  float y_intercept;
+  fitLineFromGndCell(
+    sector_cells_list_dev, last_gnd_cells_indices_dev, num_latest_gnd_cells, filter_parameters_dev,
+    gnd_gradient, y_intercept);
   uint32_t cell_id = cell_idx_in_sector;
   auto & current_cell = sector_cells_list_dev[cell_id];  // Use reference, not copy
   // auto const idx_start_point_of_cell = current_cell.start_point_index;
@@ -545,8 +547,7 @@ __device__ void SegmentContinuousCell(
     }
 
     // 3. height from the estimated ground center estimated by local gradient
-    float estimated_ground_z =
-      prev_gnd_cell.gnd_height_avg + gnd_gradient * filter_parameters_dev->cell_divider_size_m;
+    float estimated_ground_z = gnd_gradient * point.radius + y_intercept;
     if (point.z > estimated_ground_z + filter_parameters_dev->non_ground_height_threshold) {
       point.type = PointType::NON_GROUND;
       continue;
