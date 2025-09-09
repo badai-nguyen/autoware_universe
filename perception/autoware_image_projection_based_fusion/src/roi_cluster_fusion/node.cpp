@@ -52,7 +52,7 @@ RoiClusterFusionNode::RoiClusterFusionNode(const rclcpp::NodeOptions & options)
   unknown_iou_threshold_ = declare_parameter<double>("unknown_iou_threshold");
   remove_unknown_ = declare_parameter<bool>("remove_unknown");
   fusion_distance_ = declare_parameter<double>("fusion_distance");
-  strict_iou_fusion_distance_ = declare_parameter<double>("strict_iou_fusion_distance");
+  strict_iou_fusion_distance_ = declare_parameter<std::vector<double>>("strict_iou_fusion_distance");
 
   // publisher
   pub_ptr_ = this->create_publisher<ClusterMsgType>("output", rclcpp::QoS{1});
@@ -171,7 +171,8 @@ void RoiClusterFusionNode::fuse_on_single_image(
     for (const auto & cluster_map : m_cluster_roi) {
       double iou(0.0);
       bool use_rough_iou_match = is_far_enough(
-        input_cluster_msg.feature_objects.at(cluster_map.first), strict_iou_fusion_distance_);
+        input_cluster_msg.feature_objects.at(cluster_map.first), strict_iou_fusion_distance_[1]) || 
+        !is_far_enough(input_cluster_msg.feature_objects.at(cluster_map.first), strict_iou_fusion_distance_[0]);
       auto image_roi = feature_obj.feature.roi;
       auto cluster_roi = cluster_map.second;
       sanitizeROI(image_roi, camera_info.width, camera_info.height);

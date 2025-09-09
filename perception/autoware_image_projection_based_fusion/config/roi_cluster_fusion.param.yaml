@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     fusion_distance: 100.0
-    strict_iou_fusion_distance: 100.0
+    strict_iou_fusion_distance: [6.0, 100.0]
     strict_iou_match_mode: "iou"
     rough_iou_match_mode: "iou_x"
     use_cluster_semantic_type: false
