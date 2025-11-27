@@ -38,6 +38,7 @@
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -82,6 +83,7 @@ private:
     int maximum_queue_size;
     double timeout_sec;
     bool is_motion_compensated;
+    bool use_imu;
     bool publish_synchronized_pointcloud;
     bool keep_input_frame_in_synchronized_pointcloud;
     bool publish_previous_but_late_pointcloud;
@@ -121,6 +123,7 @@ private:
   std::vector<std::shared_ptr<SubscriberType>> pointcloud_subs_;
   rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
 
   // publishers
   std::shared_ptr<PublisherType> concatenated_cloud_publisher_;
@@ -145,6 +148,7 @@ private:
 
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
+  void imu_callback(const sensor_msgs::msg::Imu::ConstSharedPtr input);
 
   std::string replace_sync_topic_name_postfix(
     const std::string & original_topic_name, const std::string & postfix);

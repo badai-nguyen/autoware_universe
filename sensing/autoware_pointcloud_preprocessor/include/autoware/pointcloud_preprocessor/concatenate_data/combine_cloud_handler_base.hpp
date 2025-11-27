@@ -28,9 +28,12 @@
 #include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <autoware_sensing_msgs/msg/concatenated_point_cloud_info.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 namespace autoware::pointcloud_preprocessor
 {
@@ -65,11 +68,17 @@ public:
   }
 
   void process_twist(
-    const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist_msg);
+    const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist_msg,
+    bool use_imu = false);
 
   void process_odometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input);
 
+  void process_imu(
+    const std::string & base_frame, const sensor_msgs::msg::Imu::ConstSharedPtr & imu_msg);
+
   std::deque<geometry_msgs::msg::TwistStamped> get_twist_queue();
+
+  std::deque<geometry_msgs::msg::Vector3Stamped> get_angular_velocity_queue();
 
   Eigen::Matrix4f compute_transform_to_adjust_for_old_timestamp(
     const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp);
@@ -87,6 +96,14 @@ protected:
   ConcatenationInfoManager concatenation_info_manager_;
 
   std::deque<geometry_msgs::msg::TwistStamped> twist_queue_;
+  std::deque<geometry_msgs::msg::Vector3Stamped> angular_velocity_queue_;
+
+  geometry_msgs::msg::TransformStamped::SharedPtr geometry_imu_to_base_link_ptr_;
+  bool imu_transform_exists_{false};
+
+private:
+  void get_imu_transformation(const std::string & base_frame, const std::string & imu_frame);
+  void enqueue_imu(const sensor_msgs::msg::Imu::ConstSharedPtr & imu_msg);
 };
 
 }  // namespace autoware::pointcloud_preprocessor

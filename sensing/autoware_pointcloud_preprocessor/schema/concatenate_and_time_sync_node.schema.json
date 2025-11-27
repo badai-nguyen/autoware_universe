@@ -34,6 +34,11 @@
           "default": true,
           "description": "Flag to indicate if motion compensation is enabled."
         },
+        "use_imu": {
+          "type": "boolean",
+          "default": false,
+          "description": "Flag to indicate if IMU angular velocity should be used to replace twist angular velocity for motion compensation. Only effective when is_motion_compensated is true."
+        },
         "publish_synchronized_pointcloud": {
           "type": "boolean",
           "default": true,

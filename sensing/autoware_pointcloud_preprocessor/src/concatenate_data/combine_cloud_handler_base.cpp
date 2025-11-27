@@ -14,17 +14,65 @@
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/combine_cloud_handler_base.hpp"
 
+#include <tf2/LinearMath/Transform.h>
+#include <tf2/convert.h>
+
+#ifdef ROS_DISTRO_GALACTIC
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#else
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#endif
+
 #include <deque>
 
 namespace autoware::pointcloud_preprocessor
 {
 
 void CombineCloudHandlerBase::process_twist(
-  const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist_msg)
+  const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist_msg, bool use_imu)
 {
   geometry_msgs::msg::TwistStamped msg;
   msg.header = twist_msg->header;
   msg.twist = twist_msg->twist.twist;
+
+  // If use_imu is enabled, replace angular velocity with IMU data
+  if (use_imu && !angular_velocity_queue_.empty()) {
+    // Find the closest IMU measurement to this twist timestamp
+    // Since IMU runs at ~40Hz and twist at ~20Hz, we need to find the temporally closest sample
+    const double twist_time = rclcpp::Time(msg.header.stamp).seconds();
+    
+    auto it_imu = std::lower_bound(
+      std::begin(angular_velocity_queue_), std::end(angular_velocity_queue_),
+      twist_time,
+      [](const geometry_msgs::msg::Vector3Stamped & x, const double t) {
+        return rclcpp::Time(x.header.stamp).seconds() < t;
+      });
+
+    // it_imu now points to the first IMU sample >= twist_time
+    // Check if the previous sample is actually closer in time
+    if (it_imu != std::end(angular_velocity_queue_)) {
+      if (it_imu != std::begin(angular_velocity_queue_)) {
+        auto it_prev = std::prev(it_imu);
+        const double time_diff_current = std::abs(rclcpp::Time(it_imu->header.stamp).seconds() - twist_time);
+        const double time_diff_prev = std::abs(rclcpp::Time(it_prev->header.stamp).seconds() - twist_time);
+        
+        // Use the temporally closest IMU sample
+        if (time_diff_prev < time_diff_current) {
+          it_imu = it_prev;
+        }
+      }
+      
+      msg.twist.angular.x = it_imu->vector.x;
+      msg.twist.angular.y = it_imu->vector.y;
+      msg.twist.angular.z = it_imu->vector.z;
+    } else if (!angular_velocity_queue_.empty()) {
+      // If all IMU samples are older than twist, use the most recent one
+      auto it_last = std::prev(std::end(angular_velocity_queue_));
+      msg.twist.angular.x = it_last->vector.x;
+      msg.twist.angular.y = it_last->vector.y;
+      msg.twist.angular.z = it_last->vector.z;
+    }
+  }
 
   // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
   if (!twist_queue_.empty()) {
@@ -76,6 +124,86 @@ void CombineCloudHandlerBase::process_odometry(
 std::deque<geometry_msgs::msg::TwistStamped> CombineCloudHandlerBase::get_twist_queue()
 {
   return twist_queue_;
+}
+
+std::deque<geometry_msgs::msg::Vector3Stamped> CombineCloudHandlerBase::get_angular_velocity_queue()
+{
+  return angular_velocity_queue_;
+}
+
+void CombineCloudHandlerBase::process_imu(
+  const std::string & base_frame, const sensor_msgs::msg::Imu::ConstSharedPtr & imu_msg)
+{
+  get_imu_transformation(base_frame, imu_msg->header.frame_id);
+  enqueue_imu(imu_msg);
+}
+
+void CombineCloudHandlerBase::get_imu_transformation(
+  const std::string & base_frame, const std::string & imu_frame)
+{
+  if (imu_transform_exists_) {
+    return;
+  }
+
+  Eigen::Matrix4f eigen_imu_to_base_link;
+  auto eigen_transform_opt = managed_tf_buffer_->getTransform<Eigen::Matrix4f>(
+    base_frame, imu_frame, node_.now(), rclcpp::Duration::from_seconds(1.0), node_.get_logger());
+  imu_transform_exists_ = eigen_transform_opt.has_value();
+  
+  if (imu_transform_exists_) {
+    eigen_imu_to_base_link = *eigen_transform_opt;
+    
+    // Convert Eigen matrix to tf2::Transform
+    tf2::Matrix3x3 rotation(
+      eigen_imu_to_base_link(0, 0), eigen_imu_to_base_link(0, 1), eigen_imu_to_base_link(0, 2),
+      eigen_imu_to_base_link(1, 0), eigen_imu_to_base_link(1, 1), eigen_imu_to_base_link(1, 2),
+      eigen_imu_to_base_link(2, 0), eigen_imu_to_base_link(2, 1), eigen_imu_to_base_link(2, 2));
+    
+    tf2::Quaternion quaternion;
+    rotation.getRotation(quaternion);
+    
+    geometry_imu_to_base_link_ptr_ = std::make_shared<geometry_msgs::msg::TransformStamped>();
+    geometry_imu_to_base_link_ptr_->transform.rotation = tf2::toMsg(quaternion);
+  }
+}
+
+void CombineCloudHandlerBase::enqueue_imu(const sensor_msgs::msg::Imu::ConstSharedPtr & imu_msg)
+{
+  geometry_msgs::msg::Vector3Stamped angular_velocity;
+  angular_velocity.vector = imu_msg->angular_velocity;
+
+  geometry_msgs::msg::Vector3Stamped transformed_angular_velocity;
+  
+  if (imu_transform_exists_ && geometry_imu_to_base_link_ptr_) {
+    tf2::doTransform(
+      angular_velocity, transformed_angular_velocity, *geometry_imu_to_base_link_ptr_);
+  } else {
+    // If no transform, use angular velocity as-is
+    transformed_angular_velocity.vector = angular_velocity.vector;
+  }
+  
+  transformed_angular_velocity.header = imu_msg->header;
+
+  // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
+  if (!angular_velocity_queue_.empty()) {
+    if (
+      rclcpp::Time(angular_velocity_queue_.front().header.stamp) >
+      rclcpp::Time(imu_msg->header.stamp)) {
+      angular_velocity_queue_.clear();
+    }
+  }
+
+  // IMU data in the queue that is older than the current imu msg by 1 second will be cleared.
+  auto cutoff_time = rclcpp::Time(imu_msg->header.stamp) - rclcpp::Duration::from_seconds(1.0);
+
+  while (!angular_velocity_queue_.empty()) {
+    if (rclcpp::Time(angular_velocity_queue_.front().header.stamp) > cutoff_time) {
+      break;
+    }
+    angular_velocity_queue_.pop_front();
+  }
+
+  angular_velocity_queue_.push_back(transformed_angular_velocity);
 }
 
 Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_timestamp(

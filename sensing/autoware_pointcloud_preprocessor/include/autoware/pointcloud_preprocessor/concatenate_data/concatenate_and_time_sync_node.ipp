@@ -51,6 +51,7 @@ PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::
   params_.maximum_queue_size = static_cast<size_t>(declare_parameter<int>("maximum_queue_size"));
   params_.timeout_sec = declare_parameter<double>("timeout_sec");
   params_.is_motion_compensated = declare_parameter<bool>("is_motion_compensated");
+  params_.use_imu = declare_parameter<bool>("use_imu");
   params_.publish_synchronized_pointcloud =
     declare_parameter<bool>("publish_synchronized_pointcloud");
   params_.keep_input_frame_in_synchronized_pointcloud =
@@ -102,6 +103,15 @@ PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::
     } else {
       throw std::runtime_error(
         "input_twist_topic_type is invalid: " + params_.input_twist_topic_type);
+    }
+
+    // Subscribe to IMU if use_imu is enabled
+    if (params_.use_imu) {
+      imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+        "~/input/imu", rclcpp::SensorDataQoS(),
+        std::bind(
+          &PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::imu_callback, this,
+          std::placeholders::_1));
     }
   }
 
@@ -255,7 +265,7 @@ template <typename MsgTraits>
 void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::twist_callback(
   const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input)
 {
-  combine_cloud_handler_->process_twist(input);
+  combine_cloud_handler_->process_twist(input, params_.use_imu);
 }
 
 template <typename MsgTraits>
@@ -263,6 +273,13 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::odom_ca
   const nav_msgs::msg::Odometry::ConstSharedPtr input)
 {
   combine_cloud_handler_->process_odometry(input);
+}
+
+template <typename MsgTraits>
+void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::imu_callback(
+  const sensor_msgs::msg::Imu::ConstSharedPtr input)
+{
+  combine_cloud_handler_->process_imu(params_.output_frame, input);
 }
 
 template <typename MsgTraits>
