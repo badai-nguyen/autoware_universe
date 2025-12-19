@@ -143,6 +143,7 @@ public:
     grid_radial_limit_ = grid_radial_limit;
     grid_radial_max_num_ = std::ceil(grid_radial_limit / grid_dist_size_);
     grid_dist_size_inv_ = 1.0f / grid_dist_size_;
+    grid_azimuth_size_inv_ = 1.0f / grid_azimuth_size_;
 
     // generate grid geometry
     setGridBoundaries();
@@ -166,7 +167,11 @@ public:
     const float radius = std::sqrt(x_fixed * x_fixed + y_fixed * y_fixed);
     const float azimuth = pseudoArcTan2(y_fixed, x_fixed);
 
-    // calculate the grid id
+    // calculate the grid id: 
+    // azimuth sector 0 indexing from 0 -> grid_radial_max_num_ -1
+    // azimuth sector 1 indexing from grid_radial_max_num_ -> 2*grid_radial_max_num_ -1
+    // ...
+
     const int grid_idx = getGridIdx(radius, azimuth);
 
     // check if the point is within the grid
@@ -213,14 +218,12 @@ public:
     for (Cell & cell : cells_) {
       // find and link the scan-grid root cell
       cell.scan_grid_root_idx_ = cell.prev_grid_idx_;
-      while (cell.scan_grid_root_idx_ >= 0) {
-        const auto & prev_cell = cells_[cell.scan_grid_root_idx_];
-        // if the previous cell has point, set the previous cell as the root cell
-        if (!prev_cell.isEmpty()) break;
-        // keep searching the previous cell
-        cell.scan_grid_root_idx_ = prev_cell.scan_grid_root_idx_;
+      while (cells_[cell.scan_grid_root_idx_].radial_idx_ >= 0){
+        if(!cells_[cell.scan_grid_root_idx_].isEmpty()){
+          return;
+        }
+        cell.scan_grid_root_idx_ = cells_[cell.scan_grid_root_idx_].prev_grid_idx_;
       }
-      // if the grid root idx reaches -1, finish the search
     }
   }
 
@@ -233,6 +236,7 @@ private:
 
   // calculated parameters
   float grid_dist_size_inv_ = 0.0f;  // inverse of the grid size in meters
+  float grid_azimuth_size_inv_ = 0.0f;  // inverse of the grid size in radians
   bool is_initialized_ = false;
 
   // configured parameters
@@ -305,19 +309,20 @@ private:
     }
   }
 
-  int getAzimuthGridIdx(const int & radial_idx, const float & azimuth) const
-  {
-    const int azimuth_grid_num = azimuth_grids_per_radial_[radial_idx];
 
-    int azimuth_grid_idx =
-      static_cast<int>(std::floor(azimuth / azimuth_interval_per_radial_[radial_idx]));
-    if (azimuth_grid_idx == azimuth_grid_num) {
-      // loop back to the first grid
-      azimuth_grid_idx = 0;
-    }
-    // constant azimuth interval
-    return azimuth_grid_idx;
-  }
+  // int getAzimuthSectorIdx(const int & radial_idx, const float & azimuth) const
+  // {
+  //   const int azimuth_grid_num = azimuth_grids_per_radial_[radial_idx];
+
+  //   int azimuth_grid_idx =
+  //     static_cast<int>(std::floor(azimuth / azimuth_interval_per_radial_[radial_idx]));
+  //   if (azimuth_grid_idx == azimuth_grid_num) {
+  //     // loop back to the first grid
+  //     azimuth_grid_idx = 0;
+  //   }
+  //   // constant azimuth interval
+  //   return azimuth_grid_idx;
+  // }
 
   int getRadialIdx(const float & radius) const
   {
@@ -329,6 +334,15 @@ private:
       return -1;
     }
     return static_cast<int>(radius * grid_dist_size_inv_);
+  }
+
+  int getAzimuthSectorIdx(const float azimuth) const 
+  {
+    if (azimuth < 0.0f || azimuth >= 2.0f * M_PIf) {
+      return -1;
+    }
+    return static_cast<int>(azimuth * grid_azimuth_size_inv_);
+    
   }
 
   int getGridIdx(const int & radial_idx, const int & azimuth_idx) const
@@ -346,30 +360,21 @@ private:
       return -1;
     }
 
-    // azimuth grid id
-    const int grid_az_idx = getAzimuthGridIdx(grid_rad_idx, azimuth);
-    if (grid_az_idx < 0) {
+    // azimuth sector id
+    const int sector_az_idx = getAzimuthSectorIdx(azimuth);
+    if (sector_az_idx < 0) {
       return -1;
     }
 
-    return getGridIdx(grid_rad_idx, grid_az_idx);
+    return sector_az_idx * grid_radial_max_num_ + grid_rad_idx;
   }
 
   void getRadialAzimuthIdxFromCellIdx(const int cell_id, int & radial_idx, int & azimuth_idx) const
   {
     radial_idx = -1;
     azimuth_idx = -1;
-    for (size_t i = 0; i < radial_idx_offsets_.size(); ++i) {
-      if (cell_id < radial_idx_offsets_[i]) {
-        radial_idx = i - 1;
-        azimuth_idx = cell_id - radial_idx_offsets_[i - 1];
-        break;
-      }
-    }
-    if (cell_id >= radial_idx_offsets_.back()) {
-      radial_idx = radial_idx_offsets_.size() - 1;
-      azimuth_idx = cell_id - radial_idx_offsets_.back();
-    }
+    azimuth_idx = static_cast<int>(cell_id / grid_radial_max_num_);
+    radial_idx = cell_id % grid_radial_max_num_;
   }
 
   void setCellGeometry()
@@ -404,27 +409,19 @@ private:
 
       // set next grid id, which is radially next
       int next_grid_idx = -1;
-      // only if the next radial grid exists
-      if (radial_idx < radial_grid_num) {
-        // find nearest azimuth grid in the next radial grid
-        const float azimuth = cell.center_azimuth_;
-        const size_t azimuth_idx_next_radial_grid = getAzimuthGridIdx(radial_idx + 1, azimuth);
-        next_grid_idx = getGridIdx(radial_idx + 1, azimuth_idx_next_radial_grid);
+      if( radial_idx + 1 < grid_radial_max_num_ ) {
+        next_grid_idx = azimuth_idx * grid_radial_max_num_ + (radial_idx + 1);
+      } else {
+        next_grid_idx = idx;  // no next grid
       }
       cell.next_grid_idx_ = next_grid_idx;
 
       // set previous grid id, which is radially previous
       int prev_grid_idx = -1;
-      // only if the previous radial grid exists
-      if (radial_idx > 0) {
-        // find nearest azimuth grid in the previous radial grid
-        const float azimuth = cell.center_azimuth_;
-        // constant azimuth interval
-        const size_t azimuth_idx_prev_radial_grid = getAzimuthGridIdx(radial_idx - 1, azimuth);
-        prev_grid_idx = getGridIdx(radial_idx - 1, azimuth_idx_prev_radial_grid);
+      if( radial_idx - 1 > 0 ) {
+        prev_grid_idx = azimuth_idx * grid_radial_max_num_ + (radial_idx - 1);
       }
       cell.prev_grid_idx_ = prev_grid_idx;
-      cell.scan_grid_root_idx_ = -1;
     }
   }
 };
