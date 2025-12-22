@@ -133,12 +133,11 @@ void GridGroundFilter::initializeGround(pcl::PointIndices & out_no_ground_indice
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
   const auto grid_size = grid_ptr_->getGridSize();
+  auto grid_radial_max_num = grid_ptr_->getGridRadialMaxNum();
   // loop over grid cells
-  for (size_t idx = 0; idx < grid_size; idx++) {
-  for (int sector_idx =0; sector_idx < param_.radial_dividers_num; sector_idx++) {
-    for ( int radial_idx =0; radial_idx < grid_ptr_->grid_radial_max_num_; radial_idx++) {
-      const int cell_idx = sector_idx * grid_ptr_->grid_radial_max_num_ + radial_idx;
-      const auto & idx = static_cast<size_t>(cell_idx);
+  for (size_t sector_idx =0; sector_idx < param_.radial_dividers_num; sector_idx++) {
+    for (size_t radial_idx =0; radial_idx < grid_radial_max_num; radial_idx++) {
+      const size_t cell_idx = sector_idx * grid_radial_max_num + radial_idx;
       auto & cell = grid_ptr_->getCell(idx);
       if (cell.is_ground_initialized_) continue;
       if (cell.isEmpty()) continue;
@@ -362,11 +361,11 @@ void GridGroundFilter::classify(pcl::PointIndices & out_no_ground_indices)
 
   // loop over grid cells
   const auto grid_size = grid_ptr_->getGridSize();
-  for (int sector_az_idx = 0; sector_az_idx < param_.radial_dividers_num; sector_az_idx++) {
-    for (int grid_rad_idx = 0; grid_rad_idx < grid_ptr_->grid_radial_max_num_; grid_rad_idx++) {
-      const int cell_idx =
-        sector_az_idx * grid_ptr_->grid_radial_max_num_ + grid_rad_idx;
-      const size_t idx = static_cast<size_t>(cell_idx);
+  auto grid_radial_max_num = grid_ptr_->getGridRadialMaxNum();
+  for (size_t sector_az_idx = 0; sector_az_idx < param_.radial_dividers_num; sector_az_idx++) {
+    for (size_t grid_rad_idx = 0; grid_rad_idx < grid_radial_max_num; grid_rad_idx++) {
+      const size_t cell_idx =
+        sector_az_idx * grid_radial_max_num + grid_rad_idx;
       auto & cell = grid_ptr_->getCell(idx);
       // if the cell is empty, skip
       if (cell.isEmpty()) continue;

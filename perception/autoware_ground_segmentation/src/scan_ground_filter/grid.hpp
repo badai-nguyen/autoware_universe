@@ -183,7 +183,8 @@ public:
     // add the point to the cell
     cells_[grid_idx_idx].point_list_.emplace_back(Point{point_idx, radius, z});
   }
-
+  int getGridRadialMaxNum() const { return grid_radial_max_num_; }
+  }
   size_t getGridSize() const { return cells_.size(); }
 
   // method to get the cell
