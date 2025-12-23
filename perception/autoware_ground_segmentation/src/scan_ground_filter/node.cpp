@@ -98,7 +98,7 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
       param.gnd_grid_buffer_size = gnd_grid_buffer_size_;
       param.virtual_lidar_x = vehicle_info_.wheel_base_m / 2.0f + center_pcl_shift_;
       param.virtual_lidar_y = 0.0f;
-
+      param.radial_radius_max = declare_parameter<float>("radial_radius_max");
       grid_ground_filter_ptr_ = std::make_unique<GridGroundFilter>(param);
     }
   }

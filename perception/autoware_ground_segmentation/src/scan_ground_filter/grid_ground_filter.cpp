@@ -30,8 +30,30 @@ void GridGroundFilter::convert()
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
+  // Check for null pointer
+  if (!in_cloud_) {
+    return;
+  }
+
+  // Ensure data accessor is initialized
+  if (!data_accessor_.isInitialized()) {
+    data_accessor_.setField(in_cloud_);
+  }
+
+  if(grid_ptr_ == nullptr) {
+    return;
+  }
+  
+  if (!grid_ptr_->isInitialized()) {
+    return;
+  }
   const size_t in_cloud_data_size = in_cloud_->data.size();
   const size_t in_cloud_point_step = in_cloud_->point_step;
+
+  // Check for valid point step
+  if (in_cloud_point_step == 0) {
+    return;
+  }
 
   for (size_t data_index = 0; data_index + in_cloud_point_step <= in_cloud_data_size;
        data_index += in_cloud_point_step) {
@@ -136,6 +158,9 @@ void GridGroundFilter::initializeGround(pcl::PointIndices & out_no_ground_indice
   // loop over grid cells
   for (size_t sector_idx =0; sector_idx < param_.radial_dividers_num; sector_idx++) {
     for (int radial_idx =0; radial_idx < grid_radial_max_num; radial_idx++) {
+      // log
+      RCLCPP_DEBUG_STREAM(rclcpp::get_logger("GridGroundFilter"),
+        "initializeGround: sector_idx=" << sector_idx << ", radial_idx=" << radial_idx);
       const size_t cell_idx = sector_idx * grid_radial_max_num + static_cast<size_t>(radial_idx);
       auto & cell = grid_ptr_->getCell(cell_idx);
       if (cell.is_ground_initialized_) continue;
@@ -362,6 +387,9 @@ void GridGroundFilter::classify(pcl::PointIndices & out_no_ground_indices)
   auto grid_radial_max_num = grid_ptr_->getGridRadialMaxNum();
   for (size_t sector_az_idx = 0; sector_az_idx < param_.radial_dividers_num; sector_az_idx++) {
     for (int grid_rad_idx = 0; grid_rad_idx < grid_radial_max_num; grid_rad_idx++) {
+      // log
+      RCLCPP_DEBUG_STREAM(rclcpp::get_logger("GridGroundFilter"),
+        "classify: sector_az_idx=" << sector_az_idx << ", grid_rad_idx=" << grid_rad_idx);
       const size_t cell_idx =
         sector_az_idx * grid_radial_max_num + static_cast<size_t>(grid_rad_idx);
       auto & cell = grid_ptr_->getCell(cell_idx);
@@ -467,8 +495,19 @@ void GridGroundFilter::process(
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
+  // Check for null pointer
+  if (!in_cloud) {
+    out_no_ground_indices.indices.clear();
+    return;
+  }
+
   // set input cloud
   in_cloud_ = in_cloud;
+
+  // Ensure data accessor is initialized
+  if (!data_accessor_.isInitialized()) {
+    data_accessor_.setField(in_cloud_);
+  }
 
   // clear the output indices
   out_no_ground_indices.indices.clear();
@@ -480,13 +519,13 @@ void GridGroundFilter::process(
   convert();
 
   // 2. cell preprocess
-  preprocess();
+  // preprocess();
 
   // 3. initialize ground
-  initializeGround(out_no_ground_indices);
+  // initializeGround(out_no_ground_indices);
 
   // 4. classify point cloud
-  classify(out_no_ground_indices);
+  // classify(out_no_ground_indices);
+  
 }
-
 }  // namespace autoware::ground_segmentation

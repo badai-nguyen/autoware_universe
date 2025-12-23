@@ -135,22 +135,23 @@ public:
   }
 
   void initialize(
-    const float grid_dist_size, const float grid_azimuth_size, const float grid_radial_limit)
+    const float grid_dist_size, const float sector_azimuth_size, const float grid_radial_limit)
   {
     grid_dist_size_ = grid_dist_size;
-    grid_azimuth_size_ = grid_azimuth_size;
+    sector_azimuth_size_ = sector_azimuth_size;
 
     grid_radial_limit_ = grid_radial_limit;
-    grid_radial_max_num_ = std::ceil(grid_radial_limit / grid_dist_size_);
     grid_dist_size_inv_ = 1.0f / grid_dist_size_;
-    grid_azimuth_size_inv_ = 1.0f / grid_azimuth_size_;
+    sector_grid_max_num_ = std::ceil(grid_radial_limit * grid_dist_size_inv_);
+    sector_azimuth_size_inv_ = 1.0f / sector_azimuth_size_;
+    radial_sector_num_ = std::ceil(2.0f * M_PIf * sector_azimuth_size_inv_);
 
     // generate grid geometry
-    setGridBoundaries();
+    // setGridBoundaries();
 
     // initialize and resize cells
     cells_.clear();
-    cells_.resize(radial_idx_offsets_.back() + azimuth_grids_per_radial_.back());
+    cells_.resize(static_cast<size_t>(sector_grid_max_num_ * radial_sector_num_));
 
     // set cell geometry
     setCellGeometry();
@@ -159,6 +160,8 @@ public:
     is_initialized_ = true;
   }
 
+  bool isInitialized() const { return is_initialized_; }
+
   // method to add a point to the grid
   void addPoint(const float x, const float y, const float z, const size_t point_idx)
   {
@@ -166,10 +169,16 @@ public:
     const float y_fixed = y - origin_y_;
     const float radius = std::sqrt(x_fixed * x_fixed + y_fixed * y_fixed);
     const float azimuth = pseudoArcTan2(y_fixed, x_fixed);
+    if (radius >= grid_radial_limit_) {
+      return;
+    }
+    if (azimuth < 0.0f || azimuth >= 2.0f * M_PIf) {
+      return;
+    }
 
     // calculate the grid id: 
-    // azimuth sector 0 indexing from 0 -> grid_radial_max_num_ -1
-    // azimuth sector 1 indexing from grid_radial_max_num_ -> 2*grid_radial_max_num_ -1
+    // azimuth sector 0 indexing from 0 -> sector_grid_max_num_ -1
+    // azimuth sector 1 indexing from sector_grid_max_num_ -> 2*sector_grid_max_num_ -1
     // ...
 
     const int grid_idx = getGridIdx(radius, azimuth);
@@ -183,7 +192,10 @@ public:
     // add the point to the cell
     cells_[grid_idx_idx].point_list_.emplace_back(Point{point_idx, radius, z});
   }
-  int getGridRadialMaxNum() const { return grid_radial_max_num_; }
+
+  int getGridRadialMaxNum() const { return sector_grid_max_num_; }
+  int getSectorAzimuthMaxNum() const { return radial_sector_num_; }
+
   size_t getGridSize() const { return cells_.size(); }
 
   // method to get the cell
@@ -218,7 +230,7 @@ public:
     for (Cell & cell : cells_) {
       // find and link the scan-grid root cell
       cell.scan_grid_root_idx_ = cell.prev_grid_idx_;
-      while (cells_[cell.scan_grid_root_idx_].radial_idx_ >= 0){
+      while (cells_[cell.scan_grid_root_idx_].radial_idx_ > 0){
         if(!cells_[cell.scan_grid_root_idx_].isEmpty()){
           return;
         }
@@ -232,22 +244,21 @@ private:
   float origin_x_;
   float origin_y_;
   float grid_dist_size_ = 1.0f;      // meters
-  float grid_azimuth_size_ = 0.01f;  // radians
+  float sector_azimuth_size_ = 0.01f;  // radians
 
   // calculated parameters
   float grid_dist_size_inv_ = 0.0f;  // inverse of the grid size in meters
-  float grid_azimuth_size_inv_ = 0.0f;  // inverse of the grid size in radians
+  float sector_azimuth_size_inv_ = 0.0f;  // inverse of the grid size in radians
   bool is_initialized_ = false;
 
   // configured parameters
   float grid_radial_limit_ = 200.0f;  // meters
-  int grid_radial_max_num_ = 0;
+  int sector_grid_max_num_ = 0;
+  int radial_sector_num_ = 0;
 
   // array of grid boundaries
   std::vector<float> grid_radial_boundaries_;
-  std::vector<int> azimuth_grids_per_radial_;
-  std::vector<float> azimuth_interval_per_radial_;
-  std::vector<int> radial_idx_offsets_;
+  std::vector<float> azimuth_sector_boundaries_;
 
   // list of cells
   std::vector<Cell> cells_;
@@ -268,45 +279,19 @@ private:
     // radial boundaries
     {
       // constant distance
-      for (int i = 0; i < grid_radial_max_num_; i++) {
+      for (int i = 0; i < sector_grid_max_num_; i++) {
         grid_radial_boundaries_.push_back(i * grid_dist_size_);
       }
     }
 
-    const size_t radial_grid_num = grid_radial_boundaries_.size();
-
-    // azimuth boundaries
+    //  azimuth sector boundaries
     {
-      if (grid_azimuth_size_ <= 0) {
-        throw std::runtime_error("Grid azimuth size is not positive.");
-      }
-
-      // number of azimuth grids per radial grid
-      azimuth_grids_per_radial_.resize(radial_grid_num);
-      azimuth_interval_per_radial_.resize(radial_grid_num);
-      azimuth_grids_per_radial_[0] = 1;
-      azimuth_interval_per_radial_[0] = 2.0f * M_PIf;
-
-      const int max_azimuth_grid_num = static_cast<int>(2.0 * M_PIf / grid_azimuth_size_);
-
-      int divider = 1;
-      for (size_t i = radial_grid_num - 1; i > 0; --i) {
-        // set azimuth grid number
-        const int grid_num = static_cast<int>(max_azimuth_grid_num / divider);
-        const int azimuth_grid_num = std::max(std::min(grid_num, max_azimuth_grid_num), 1);
-        const float azimuth_interval_evened = 2.0f * M_PIf / azimuth_grid_num;
-
-        azimuth_grids_per_radial_[i] = azimuth_grid_num;
-        azimuth_interval_per_radial_[i] = azimuth_interval_evened;
+      for (int azimuth_sector_idx = 0; azimuth_sector_idx < radial_sector_num_;
+           azimuth_sector_idx++) {
+        azimuth_sector_boundaries_.push_back(azimuth_sector_idx * sector_azimuth_size_);
       }
     }
-
-    // accumulate the number of azimuth grids per radial grid, set offset for each radial grid
-    radial_idx_offsets_.resize(radial_grid_num);
-    radial_idx_offsets_[0] = 0;
-    for (size_t i = 1; i < radial_grid_num; ++i) {
-      radial_idx_offsets_[i] = radial_idx_offsets_[i - 1] + azimuth_grids_per_radial_[i - 1];
-    }
+    
   }
 
 
@@ -327,7 +312,7 @@ private:
   int getRadialIdx(const float & radius) const
   {
     // check if the point is within the grid
-    if (radius > grid_radial_limit_) {
+    if (radius >= grid_radial_limit_) {
       return -1;
     }
     if (radius < 0) {
@@ -341,13 +326,8 @@ private:
     if (azimuth < 0.0f || azimuth >= 2.0f * M_PIf) {
       return -1;
     }
-    return static_cast<int>(azimuth * grid_azimuth_size_inv_);
+    return static_cast<int>(azimuth * sector_azimuth_size_inv_);
     
-  }
-
-  int getGridIdx(const int & radial_idx, const int & azimuth_idx) const
-  {
-    return radial_idx_offsets_[radial_idx] + azimuth_idx;
   }
 
   // method to determine the grid id of a point
@@ -366,15 +346,16 @@ private:
       return -1;
     }
 
-    return sector_az_idx * grid_radial_max_num_ + grid_rad_idx;
+    return sector_az_idx * sector_grid_max_num_ + grid_rad_idx;
   }
 
   void getRadialAzimuthIdxFromCellIdx(const int cell_id, int & radial_idx, int & azimuth_idx) const
   {
     radial_idx = -1;
     azimuth_idx = -1;
-    azimuth_idx = static_cast<int>(cell_id / grid_radial_max_num_);
-    radial_idx = cell_id % grid_radial_max_num_;
+
+    azimuth_idx = static_cast<int>(cell_id / sector_grid_max_num_);
+    radial_idx = cell_id % sector_grid_max_num_;
   }
 
   void setCellGeometry()
@@ -382,46 +363,40 @@ private:
     std::unique_ptr<ScopedTimeTrack> st_ptr;
     if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-    for (size_t idx = 0; idx < cells_.size(); ++idx) {
-      Cell & cell = cells_[idx];
+    for (int azimuth_sector_idx = 0; azimuth_sector_idx < radial_sector_num_; azimuth_sector_idx++) {
+      for (int radial_idx = 0; radial_idx < sector_grid_max_num_; radial_idx++) {
+         auto idx = azimuth_sector_idx * sector_grid_max_num_ + radial_idx;
+        Cell & cell = cells_[idx];
 
-      int radial_idx = 0;
-      int azimuth_idx = 0;
-      getRadialAzimuthIdxFromCellIdx(idx, radial_idx, azimuth_idx);
+        cell.grid_idx_ = idx;
+        cell.radial_idx_ = radial_idx;
+        cell.azimuth_idx_ = azimuth_sector_idx;
 
-      cell.grid_idx_ = idx;
-      cell.radial_idx_ = radial_idx;
-      cell.azimuth_idx_ = azimuth_idx;
+        // set width of the cell
 
-      // set width of the cell
-      const auto radial_grid_num = static_cast<int>(grid_radial_boundaries_.size() - 1);
-      if (radial_idx < radial_grid_num) {
-        cell.radial_size_ =
-          grid_radial_boundaries_[radial_idx + 1] - grid_radial_boundaries_[radial_idx];
-      } else {
-        cell.radial_size_ = grid_radial_limit_ - grid_radial_boundaries_[radial_idx];
+        cell.azimuth_size_ = sector_azimuth_size_;
+        cell.radial_size_ = grid_dist_size_;
+
+        // set center of the cell
+        cell.center_radius_ =  (static_cast<float>(radial_idx) + 0.5f) * cell.radial_size_;
+        cell.center_azimuth_ = (static_cast<float>(azimuth_sector_idx) + 0.5f) * cell.azimuth_size_;
+
+        // set next grid id, which is radially next
+        int next_grid_idx = -1;
+        if( radial_idx + 1 < sector_grid_max_num_ ) {
+          next_grid_idx = idx + 1;
+        } else {
+          next_grid_idx = idx;  // no next grid
+        }
+        cell.next_grid_idx_ = next_grid_idx;
+
+        // set previous grid id, which is radially previous
+        int prev_grid_idx = -1;
+        if( radial_idx - 1 > 0 ) {
+          prev_grid_idx = idx - 1;
+        }
+        cell.prev_grid_idx_ = prev_grid_idx;
       }
-      cell.azimuth_size_ = azimuth_interval_per_radial_[radial_idx];
-
-      // set center of the cell
-      cell.center_radius_ = grid_radial_boundaries_[radial_idx] + cell.radial_size_ * 0.5f;
-      cell.center_azimuth_ = (static_cast<float>(azimuth_idx) + 0.5f) * cell.azimuth_size_;
-
-      // set next grid id, which is radially next
-      int next_grid_idx = -1;
-      if( radial_idx + 1 < grid_radial_max_num_ ) {
-        next_grid_idx = azimuth_idx * grid_radial_max_num_ + (radial_idx + 1);
-      } else {
-        next_grid_idx = idx;  // no next grid
-      }
-      cell.next_grid_idx_ = next_grid_idx;
-
-      // set previous grid id, which is radially previous
-      int prev_grid_idx = -1;
-      if( radial_idx - 1 > 0 ) {
-        prev_grid_idx = azimuth_idx * grid_radial_max_num_ + (radial_idx - 1);
-      }
-      cell.prev_grid_idx_ = prev_grid_idx;
     }
   }
 };

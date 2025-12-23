@@ -33,9 +33,22 @@ public:
 
   void setField(const PointCloud2ConstPtr & input)
   {
-    data_offset_x_ = input->fields[pcl::getFieldIndex(*input, "x")].offset;
-    data_offset_y_ = input->fields[pcl::getFieldIndex(*input, "y")].offset;
-    data_offset_z_ = input->fields[pcl::getFieldIndex(*input, "z")].offset;
+    if (!input) {
+      return;
+    }
+
+    int x_index = pcl::getFieldIndex(*input, "x");
+    int y_index = pcl::getFieldIndex(*input, "y");
+    int z_index = pcl::getFieldIndex(*input, "z");
+
+    // Check if required fields exist
+    if (x_index < 0 || y_index < 0 || z_index < 0) {
+      return;
+    }
+
+    data_offset_x_ = input->fields[x_index].offset;
+    data_offset_y_ = input->fields[y_index].offset;
+    data_offset_z_ = input->fields[z_index].offset;
     int intensity_index = pcl::getFieldIndex(*input, "intensity");
     if (intensity_index != -1) {
       data_offset_intensity_ = input->fields[intensity_index].offset;
@@ -49,6 +62,25 @@ public:
   inline void getPoint(
     const PointCloud2ConstPtr & input, const size_t data_index, pcl::PointXYZ & point) const
   {
+    if (!input || !data_offset_initialized_) {
+      point.x = 0.0f;
+      point.y = 0.0f;
+      point.z = 0.0f;
+      return;
+    }
+
+    // Check bounds - ensure we can read a float (4 bytes) from each offset
+    const size_t data_size = input->data.size();
+    constexpr size_t float_size = sizeof(float);
+    if (data_index + data_offset_x_ + float_size > data_size || 
+        data_index + data_offset_y_ + float_size > data_size || 
+        data_index + data_offset_z_ + float_size > data_size) {
+      point.x = 0.0f;
+      point.y = 0.0f;
+      point.z = 0.0f;
+      return;
+    }
+
     point.x = *reinterpret_cast<const float *>(&input->data[data_index + data_offset_x_]);
     point.y = *reinterpret_cast<const float *>(&input->data[data_index + data_offset_y_]);
     point.z = *reinterpret_cast<const float *>(&input->data[data_index + data_offset_z_]);
