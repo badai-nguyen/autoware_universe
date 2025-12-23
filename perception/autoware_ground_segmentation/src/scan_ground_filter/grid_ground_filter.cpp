@@ -40,13 +40,22 @@ void GridGroundFilter::convert()
     data_accessor_.setField(in_cloud_);
   }
 
-  if(grid_ptr_ == nullptr) {
+  if (grid_ptr_ == nullptr) {
     return;
   }
-  
+
   if (!grid_ptr_->isInitialized()) {
     return;
   }
+
+  // Defensive: check grid has cells
+  if (grid_ptr_->getGridSize() == 0) {
+    // log
+    RCLCPP_WARN_STREAM(
+      rclcpp::get_logger("GridGroundFilter"), "convert: Grid is not initialized with cells.");
+    return;
+  }
+
   const size_t in_cloud_data_size = in_cloud_->data.size();
   const size_t in_cloud_point_step = in_cloud_->point_step;
 
@@ -101,7 +110,7 @@ bool GridGroundFilter::recursiveSearch(
   if (check_cell.has_ground_) {
     // the cell has ground, add the index to the list, and search previous cell
     idx.push_back(check_idx);
-    return recursiveSearch(check_cell.scan_grid_root_idx_, search_cnt - 1, idx, count);
+    return recursiveSearch(check_cell.scan_grid_root_idx_, search_cnt - 1, idx);
   }
   // if the cell does not have ground, search previous cell
   return recursiveSearch(check_cell.scan_grid_root_idx_, search_cnt, idx, count);
