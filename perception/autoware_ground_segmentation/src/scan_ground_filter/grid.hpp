@@ -142,9 +142,11 @@ public:
 
     grid_radial_limit_ = grid_radial_limit;
     grid_dist_size_inv_ = 1.0f / grid_dist_size_;
-    sector_grid_max_num_ = std::ceil(grid_radial_limit * grid_dist_size_inv_);
+    sector_grid_max_num_ = std::ceil(grid_radial_limit * grid_dist_size_inv_) + 1;
     sector_azimuth_size_inv_ = 1.0f / sector_azimuth_size_;
-    radial_sector_num_ = std::ceil(2.0f * M_PIf * sector_azimuth_size_inv_);
+    radial_sector_num_ = std::ceil(2.0f * M_PIf * sector_azimuth_size_inv_) + 1;
+    std::cout<<"sector_grid_max_num_: "<<sector_grid_max_num_<<", radial_sector_num_: "<<radial_sector_num_<<std::endl;
+    RCLCPP_INFO(rclcpp::get_logger("Grid"), "initialize: sector_grid_max_num_: %d, radial_sector_num_: %d", sector_grid_max_num_, radial_sector_num_);
 
     // generate grid geometry
     // setGridBoundaries();
@@ -189,6 +191,17 @@ public:
     }
     const size_t grid_idx_idx = static_cast<size_t>(grid_idx);
 
+    // check bounds to prevent memory corruption
+    if (grid_idx_idx >= cells_.size()) {
+      // log grid_idx_idx: " << grid_idx_idx << ", cells_.size(): " << cells_.size();
+      RCLCPP_INFO(rclcpp::get_logger("Grid"), "invalid index: out of bounds %zu %zu", grid_idx_idx, cells_.size());
+
+      const int radial_idx = getRadialIdx(radius);
+      const int azimuth_idx = getAzimuthSectorIdx(azimuth);
+      std::cout<<"grid_idx: "<<grid_idx<<", radial_idx: "<<radial_idx<<", azimuth_idx: "<<azimuth_idx<<std::endl;
+      return;
+    }
+
     // add the point to the cell
     cells_[grid_idx_idx].point_list_.emplace_back(Point{point_idx, radius, z});
   }
@@ -201,9 +214,12 @@ public:
   // method to get the cell
   inline Cell & getCell(const int grid_idx)
   {
+    if (grid_idx < 0) {
+      throw std::out_of_range("Invalid grid index: negative");
+    }
     const size_t idx = static_cast<size_t>(grid_idx);
     if (idx >= cells_.size()) {
-      throw std::out_of_range("Invalid grid index");
+      throw std::out_of_range("Invalid grid index: out of bounds");
     }
     return cells_[idx];
   }
@@ -226,15 +242,27 @@ public:
     std::unique_ptr<ScopedTimeTrack> st_ptr;
     if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-    // iterate over grid cells
-    for (Cell & cell : cells_) {
-      // find and link the scan-grid root cell
-      cell.scan_grid_root_idx_ = cell.prev_grid_idx_;
-      while (cells_[cell.scan_grid_root_idx_].radial_idx_ > 0){
-        if(!cells_[cell.scan_grid_root_idx_].isEmpty()){
-          return;
+    // point number :       0 1 2 0 4 5 6 0 8 0
+    // radial_index:        0 1 2 3 4 5 6 7 8 9
+    // cell_idx:            0 1 2 3 4 5 6 7 8 9
+    // prev_grid_idx:       0 0 1 2 3 4 5 6 7 8
+    // scan_grid_root_idx_: 0 0 1 2 2 4 5 6 6 8
+    for (int azimuth_idx = 0; azimuth_idx < radial_sector_num_; ++azimuth_idx) {
+      const int cell_idx = azimuth_idx * sector_grid_max_num_;
+      auto & cell = cells_[cell_idx];
+      cell.scan_grid_root_idx_ = cell_idx;
+      for (int radial_idx = 1; radial_idx < sector_grid_max_num_; ++radial_idx) {
+        const int prev_grid_idx_in_sector = radial_idx - 1;
+        const int prev_grid_idx = azimuth_idx * sector_grid_max_num_ + prev_grid_idx_in_sector;
+        const auto & prev_cell = cells_[prev_grid_idx];
+        if(!prev_cell.isEmpty()){
+          cell.scan_grid_root_idx_ = prev_grid_idx;
         }
-        cell.scan_grid_root_idx_ = cells_[cell.scan_grid_root_idx_].prev_grid_idx_;
+        else{
+          cell.scan_grid_root_idx_ = prev_cell.scan_grid_root_idx_;
+        }
+        // log
+        std::cout<< "prev_grid_idx " << prev_grid_idx << " scan_grid_root_idx_: " << cell.scan_grid_root_idx_<<std::endl;
       }
     }
   }

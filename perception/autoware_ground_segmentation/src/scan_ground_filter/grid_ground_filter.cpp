@@ -110,7 +110,7 @@ bool GridGroundFilter::recursiveSearch(
   if (check_cell.has_ground_) {
     // the cell has ground, add the index to the list, and search previous cell
     idx.push_back(check_idx);
-    return recursiveSearch(check_cell.scan_grid_root_idx_, search_cnt - 1, idx);
+    return recursiveSearch(check_cell.scan_grid_root_idx_, search_cnt - 1, idx, count);
   }
   // if the cell does not have ground, search previous cell
   return recursiveSearch(check_cell.scan_grid_root_idx_, search_cnt, idx, count);
@@ -528,13 +528,13 @@ void GridGroundFilter::process(
   convert();
 
   // 2. cell preprocess
-  // preprocess();
+  preprocess();
 
   // 3. initialize ground
-  // initializeGround(out_no_ground_indices);
+  initializeGround(out_no_ground_indices);
 
   // 4. classify point cloud
-  // classify(out_no_ground_indices);
+  classify(out_no_ground_indices);
   
 }
 }  // namespace autoware::ground_segmentation
