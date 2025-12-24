@@ -165,13 +165,13 @@ void GridGroundFilter::initializeGround(pcl::PointIndices & out_no_ground_indice
 
   auto grid_radial_max_num = grid_ptr_->getGridRadialMaxNum();
   // loop over grid cells
-  for (size_t sector_idx =0; sector_idx < param_.radial_dividers_num; sector_idx++) {
+  for (size_t sector_idx =0; sector_idx < sector_azimuth_max_num; sector_idx++) {
     for (int radial_idx =0; radial_idx < grid_radial_max_num; radial_idx++) {
       // log
       RCLCPP_DEBUG_STREAM(rclcpp::get_logger("GridGroundFilter"),
         "initializeGround: sector_idx=" << sector_idx << ", radial_idx=" << radial_idx);
-      const size_t cell_idx = sector_idx * grid_radial_max_num + static_cast<size_t>(radial_idx);
-      auto & cell = grid_ptr_->getCell(cell_idx);
+      const int cell_idx = sector_idx * grid_radial_max_num + radial_idx;
+      const auto & cell = grid_ptr_->getCell(cell_idx);
       if (cell.is_ground_initialized_) continue;
       if (cell.isEmpty()) continue;
       const auto prev_cell_idx = cell.scan_grid_root_idx_;

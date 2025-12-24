@@ -242,27 +242,33 @@ public:
     std::unique_ptr<ScopedTimeTrack> st_ptr;
     if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
+    // Example for one azimuth sector:
     // point number :       0 1 2 0 4 5 6 0 8 0
     // radial_index:        0 1 2 3 4 5 6 7 8 9
     // cell_idx:            0 1 2 3 4 5 6 7 8 9
     // prev_grid_idx:       0 0 1 2 3 4 5 6 7 8
     // scan_grid_root_idx_: 0 0 1 2 2 4 5 6 6 8
     for (int azimuth_idx = 0; azimuth_idx < radial_sector_num_; ++azimuth_idx) {
-      const int cell_idx = azimuth_idx * sector_grid_max_num_;
-      auto & cell = cells_[cell_idx];
-      cell.scan_grid_root_idx_ = cell_idx;
+      const int sector_base_idx = azimuth_idx * sector_grid_max_num_;
+      
+      // Initialize first cell in the sector (radial_idx = 0)
+      auto & first_cell = cells_[sector_base_idx];
+      first_cell.scan_grid_root_idx_ = sector_base_idx;
+      
+      // Process remaining cells in radial direction
       for (int radial_idx = 1; radial_idx < sector_grid_max_num_; ++radial_idx) {
-        const int prev_grid_idx_in_sector = radial_idx - 1;
-        const int prev_grid_idx = azimuth_idx * sector_grid_max_num_ + prev_grid_idx_in_sector;
-        const auto & prev_cell = cells_[prev_grid_idx];
-        if(!prev_cell.isEmpty()){
-          cell.scan_grid_root_idx_ = prev_grid_idx;
+        const int current_cell_idx = sector_base_idx + radial_idx;
+        const int prev_cell_idx = sector_base_idx + (radial_idx - 1);
+        
+        auto & current_cell = cells_[current_cell_idx];
+        const auto & prev_cell = cells_[prev_cell_idx];
+        
+        // If previous cell has points, it becomes the root; otherwise inherit its root
+        if (!prev_cell.isEmpty()) {
+          current_cell.scan_grid_root_idx_ = prev_cell_idx;
+        } else {
+          current_cell.scan_grid_root_idx_ = prev_cell.scan_grid_root_idx_;
         }
-        else{
-          cell.scan_grid_root_idx_ = prev_cell.scan_grid_root_idx_;
-        }
-        // log
-        std::cout<< "prev_grid_idx " << prev_grid_idx << " scan_grid_root_idx_: " << cell.scan_grid_root_idx_<<std::endl;
       }
     }
   }
