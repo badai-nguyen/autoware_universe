@@ -85,6 +85,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
 
   std::vector<std::string> input_rois_topics;
   std::vector<std::string> input_camera_info_topics;
+  std::vector<bool> fusion_options;
 
   input_rois_topics.resize(rois_number_);
   input_camera_info_topics.resize(rois_number_);
@@ -97,11 +98,16 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
     input_camera_info_topics.at(roi_i) = declare_parameter<std::string>(
       "input/camera_info" + std::to_string(roi_i),
       "/sensing/camera/camera" + std::to_string(roi_i) + "/camera_info");
+    std::string camera_i_fusion_options = declare_parameter<str::string>("fusion_optioin" + str::to_string(roi_i));
+    fusion_options.at(roi_i) = input_camera_info_topics == "true" ? true : false;
   }
+  int fusion_number = std::count_if(fusion_options.begin(), fusion_options.end(),true);
 
   // Subscribe to Camera Info
-  camera_info_subs_.resize(rois_number_);
+  camera_info_subs_.resize(fusion_number);
+  int fusion_idx = 0;
   for (auto rois_id = 0u; rois_id < rois_number_; ++rois_id) {
+    if(!fusion_options.at(roi_i)) continue;
     auto topic = input_camera_info_topics.at(rois_id);
     auto qos = rclcpp::QoS{1}.best_effort();
 
@@ -109,6 +115,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
       topic, qos, [this, rois_id](const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg) {
         this->camera_info_callback(msg, rois_id);
       });
+    ++fusion_idx;
   }
 
   // Subscribe to ROIs

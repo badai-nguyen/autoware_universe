@@ -94,30 +94,39 @@
   <arg name="image_raw0" default="/sensing/camera/camera0/image_rect_color" description="image raw topic name"/>
   <arg name="camera_info0" default="/sensing/camera/camera0/camera_info" description="camera info topic name"/>
   <arg name="detection_rois0" default="/perception/object_recognition/detection/rois0" description="detection rois output topic name"/>
+  <arg name="fusion_optioin0" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_raw1" default="/sensing/camera/camera1/image_rect_color"/>
   <arg name="camera_info1" default="/sensing/camera/camera1/camera_info"/>
   <arg name="detection_rois1" default="/perception/object_recognition/detection/rois1"/>
+  <arg name="fusion_optioin1" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_raw2" default="/sensing/camera/camera2/image_rect_color"/>
   <arg name="camera_info2" default="/sensing/camera/camera2/camera_info"/>
   <arg name="detection_rois2" default="/perception/object_recognition/detection/rois2"/>
+  <arg name="fusion_optioin2" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_raw3" default="/sensing/camera/camera3/image_rect_color"/>
   <arg name="camera_info3" default="/sensing/camera/camera3/camera_info"/>
   <arg name="detection_rois3" default="/perception/object_recognition/detection/rois3"/>
+  <arg name="fusion_optioin3" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_raw4" default="/sensing/camera/camera4/image_rect_color"/>
   <arg name="camera_info4" default="/sensing/camera/camera4/camera_info"/>
   <arg name="detection_rois4" default="/perception/object_recognition/detection/rois4"/>
+  <arg name="fusion_optioin4" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_raw5" default="/sensing/camera/camera5/image_rect_color"/>
   <arg name="camera_info5" default="/sensing/camera/camera5/camera_info"/>
   <arg name="detection_rois5" default="/perception/object_recognition/detection/rois5"/>
+  <arg name="fusion_optioin5" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_raw6" default="/sensing/camera/camera6/image_rect_color"/>
   <arg name="camera_info6" default="/sensing/camera/camera6/camera_info"/>
   <arg name="detection_rois6" default="/perception/object_recognition/detection/rois6"/>
+  <arg name="fusion_optioin6" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_raw7" default="/sensing/camera/camera7/image_rect_color"/>
   <arg name="camera_info7" default="/sensing/camera/camera7/camera_info"/>
   <arg name="detection_rois7" default="/perception/object_recognition/detection/rois7"/>
+  <arg name="fusion_optioin7" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_raw8" default="/sensing/camera/camera8/image_rect_color"/>
   <arg name="camera_info8" default="/sensing/camera/camera8/camera_info"/>
   <arg name="detection_rois8" default="/perception/object_recognition/detection/rois8"/>
+  <arg name="fusion_optioin8" default="true" description="true: to allow fusion this camera detection result"/>
   <arg name="image_number" default="6" description="choose image raw number(1-8)"/>
   <arg name="image_topic_name" default="image_rect_color" description="image topic name options `image_rect_color`, `image_raw"/>
   <arg name="segmentation_pointcloud_fusion_camera_ids" default="[0,1,5]" description="list of camera ids used for segmentation_pointcloud_fusion node"/>
