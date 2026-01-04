@@ -103,32 +103,27 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
   }
   int fusion_number = std::count_if(fusion_options.begin(), fusion_options.end(),true);
 
-  // Subscribe to Camera Info
   camera_info_subs_.resize(fusion_number);
+  rois_subs_.resize(fusion_number)
   int fusion_idx = 0;
   for (auto rois_id = 0u; rois_id < rois_number_; ++rois_id) {
     if(!fusion_options.at(roi_i)) continue;
-    auto topic = input_camera_info_topics.at(rois_id);
     auto qos = rclcpp::QoS{1}.best_effort();
 
-    camera_info_subs_[rois_id] = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-      topic, qos, [this, rois_id](const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg) {
+    // Subscribe to Camera Info
+    auto info_topic = input_camera_info_topics.at(rois_id);
+    camera_info_subs_[fusion_idx] = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+      info_topic, qos, [this, rois_id](const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg) {
         this->camera_info_callback(msg, rois_id);
       });
-    ++fusion_idx;
-  }
 
-  // Subscribe to ROIs
-  rois_subs_.resize(rois_number_);
-
-  for (auto rois_id = 0u; rois_id < rois_number_; ++rois_id) {
-    auto topic = input_rois_topics.at(rois_id);
-    auto qos = rclcpp::QoS{1}.best_effort();
-
-    rois_subs_[rois_id] = this->create_subscription<Msg2D>(
+    // Subscribe to ROIs 
+    auto roi_topic = input_rois_topics.at(roi_id);
+    rois_subs_[fusion_idx] = this->create_subscription<Msg2D>(
       topic, qos, [this, rois_id](const typename Msg2D::ConstSharedPtr msg) {
         this->rois_callback(msg, rois_id);
       });
+    ++fusion_idx;
   }
 
   // Subscribe 3D input msg
