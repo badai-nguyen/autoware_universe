@@ -135,12 +135,15 @@ public:
   }
 
   void initialize(
-    const float grid_dist_size, const float sector_azimuth_size, const float grid_radial_limit)
+    const float grid_dist_size, const float sector_azimuth_size, const float grid_radial_limit,
+    const float anisotropic_scale_a = 1.0f, const float anisotropic_scale_b = 1.0f)
   {
     grid_dist_size_ = grid_dist_size;
     sector_azimuth_size_ = sector_azimuth_size;
 
     grid_radial_limit_ = grid_radial_limit;
+    anisotropic_scale_a_ = anisotropic_scale_a;
+    anisotropic_scale_b_ = anisotropic_scale_b;
     grid_dist_size_inv_ = 1.0f / grid_dist_size_;
     sector_grid_max_num_ = std::ceil(grid_radial_limit * grid_dist_size_inv_) + 1;
     sector_azimuth_size_inv_ = 1.0f / sector_azimuth_size_;
@@ -169,7 +172,11 @@ public:
   {
     const float x_fixed = x - origin_x_;
     const float y_fixed = y - origin_y_;
-    const float radius = std::sqrt(x_fixed * x_fixed + y_fixed * y_fixed);
+    // Apply anisotropic scaling to x and y before calculating radius
+    const float x_scaled = x_fixed * anisotropic_scale_a_;
+    const float y_scaled = y_fixed * anisotropic_scale_b_;
+    const float radius = std::sqrt(x_scaled * x_scaled + y_scaled * y_scaled);
+    // Use original coordinates for azimuth calculation to preserve direction
     const float azimuth = pseudoArcTan2(y_fixed, x_fixed);
     if (radius >= grid_radial_limit_) {
       return;
@@ -289,6 +296,8 @@ private:
   float grid_radial_limit_ = 200.0f;  // meters
   int sector_grid_max_num_ = 0;
   int radial_sector_num_ = 0;
+  float anisotropic_scale_a_ = 1.0f;  // scaling factor for x-axis
+  float anisotropic_scale_b_ = 1.0f;  // scaling factor for y-axis
 
   // array of grid boundaries
   std::vector<float> grid_radial_boundaries_;

@@ -99,6 +99,8 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
       param.virtual_lidar_x = vehicle_info_.wheel_base_m / 2.0f + center_pcl_shift_;
       param.virtual_lidar_y = 0.0f;
       param.radial_radius_max = declare_parameter<float>("radial_radius_max");
+      param.anisotropic_scale_a = static_cast<float>(declare_parameter<double>("anisotropic_scale_a", 1.0));
+      param.anisotropic_scale_b = static_cast<float>(declare_parameter<double>("anisotropic_scale_b", 1.0));
       grid_ground_filter_ptr_ = std::make_unique<GridGroundFilter>(param);
     }
   }
