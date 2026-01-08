@@ -422,17 +422,21 @@ void GridGroundFilter::classify(pcl::PointIndices & out_no_ground_indices)
       {
         const int front_radial_id =
           grid_ptr_->getCell(grid_idcs.back()).radial_idx_ + grid_idcs.size();
-        const float radial_diff_between_cells = cell.center_radius_ - prev_cell.center_radius_;
-
-        if (radial_diff_between_cells < param_.gnd_grid_continual_thresh * cell.radial_size_) {
-          if (cell.radial_idx_ - front_radial_id < param_.gnd_grid_continual_thresh) {
+        const int radial_idx = cell.radial_idx_;
+        const int radial_id_diff = radial_idx - prev_cell.radial_idx_;
+        if(radial_idx - front_radial_id < param_.gnd_grid_continual_thresh + param_.gnd_grid_buffer_size &&
+           radial_id_diff < param_.gnd_grid_continual_thresh)
+           {
             mode = SegmentationMode::CONTINUOUS;
-          } else {
+           }
+          else if ( radial_id_diff < param_.gnd_grid_continual_thresh)
+          {
             mode = SegmentationMode::DISCONTINUOUS;
           }
-        } else {
-          mode = SegmentationMode::BREAK;
-        }
+          else
+          {
+            mode = SegmentationMode::BREAK;
+          }
       }
 
       {
