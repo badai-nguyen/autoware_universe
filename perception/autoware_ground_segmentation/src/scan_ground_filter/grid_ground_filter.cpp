@@ -100,7 +100,8 @@ bool GridGroundFilter::recursiveSearch(
   }
   count -= 1;
   // recursive search
-  if (check_idx < 0) {
+  const auto radial_idx = grid_ptr_->getCell(check_idx).radial_idx_;
+  if (radial_idx < 0) {
     return false;
   }
   if (search_cnt == 0) {
@@ -163,15 +164,16 @@ void GridGroundFilter::initializeGround(pcl::PointIndices & out_no_ground_indice
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  auto grid_radial_max_num = grid_ptr_->getGridRadialMaxNum();
+  const auto grid_radial_max_num = grid_ptr_->getGridRadialMaxNum();
+  const auto sector_azimuth_max_num = grid_ptr_->getSectorAzimuthMaxNum();
   // loop over grid cells
-  for (size_t sector_idx =0; sector_idx < sector_azimuth_max_num; sector_idx++) {
+  for (int sector_idx =0; sector_idx < sector_azimuth_max_num; sector_idx++) {
     for (int radial_idx =0; radial_idx < grid_radial_max_num; radial_idx++) {
       // log
       RCLCPP_DEBUG_STREAM(rclcpp::get_logger("GridGroundFilter"),
         "initializeGround: sector_idx=" << sector_idx << ", radial_idx=" << radial_idx);
       const int cell_idx = sector_idx * grid_radial_max_num + radial_idx;
-      const auto & cell = grid_ptr_->getCell(cell_idx);
+      auto & cell = grid_ptr_->getCell(cell_idx);
       if (cell.is_ground_initialized_) continue;
       if (cell.isEmpty()) continue;
       const auto prev_cell_idx = cell.scan_grid_root_idx_;
