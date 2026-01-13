@@ -169,10 +169,26 @@ public:
     // initialize grid pointer
     grid_ptr_ = std::make_unique<Grid>(param_.virtual_lidar_x, param_.virtual_lidar_y);
     
-    // Calculate grid_radial_limit from bounding box (maximum distance from origin to any corner)
-    const float dx_max = std::max(std::abs(param_.x_max), std::abs(param_.x_min));
-    const float dy_max = std::max(std::abs(param_.y_max), std::abs(param_.y_min));
-    const float grid_radial_limit = std::sqrt(dx_max * dx_max + dy_max * dy_max);
+    // Calculate grid_radial_limit from bounding box with anisotropic scaling applied
+    // This matches how addPoint() calculates radius: (x - origin_x) * scale_a, (y - origin_y) * scale_b
+    // Check all 4 corners of the bounding box to find maximum scaled radius
+    const float x_max_fixed = param_.x_max - param_.virtual_lidar_x;
+    const float x_min_fixed = param_.x_min - param_.virtual_lidar_x;
+    const float y_max_fixed = param_.y_max - param_.virtual_lidar_y;
+    const float y_min_fixed = param_.y_min - param_.virtual_lidar_y;
+    
+    // Apply anisotropic scaling to each corner
+    const float x_max_scaled = x_max_fixed * param_.anisotropic_scale_a;
+    const float x_min_scaled = x_min_fixed * param_.anisotropic_scale_a;
+    const float y_max_scaled = y_max_fixed * param_.anisotropic_scale_b;
+    const float y_min_scaled = y_min_fixed * param_.anisotropic_scale_b;
+    
+    // Calculate scaled radius for all 4 corners and find maximum
+    const float radius_corner1 = std::sqrt(x_max_scaled * x_max_scaled + y_max_scaled * y_max_scaled);
+    const float radius_corner2 = std::sqrt(x_max_scaled * x_max_scaled + y_min_scaled * y_min_scaled);
+    const float radius_corner3 = std::sqrt(x_min_scaled * x_min_scaled + y_max_scaled * y_max_scaled);
+    const float radius_corner4 = std::sqrt(x_min_scaled * x_min_scaled + y_min_scaled * y_min_scaled);
+    const float grid_radial_limit = std::max({radius_corner1, radius_corner2, radius_corner3, radius_corner4});
     
     // Use radial_divider_angle_rad as sector_azimuth_size
     grid_ptr_->initialize(
