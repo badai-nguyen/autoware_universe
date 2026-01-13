@@ -148,7 +148,10 @@ struct GridGroundFilterParameter
   float virtual_lidar_x;
   float virtual_lidar_y;
 
-  float radial_radius_max;
+  float x_max;  // maximum x coordinate in bounding box
+  float x_min;  // minimum x coordinate in bounding box
+  float y_max;  // maximum y coordinate in bounding box
+  float y_min;  // minimum y coordinate in bounding box
   float anisotropic_scale_a;  // scaling factor for x-axis
   float anisotropic_scale_b;  // scaling factor for y-axis
 };
@@ -165,10 +168,15 @@ public:
 
     // initialize grid pointer
     grid_ptr_ = std::make_unique<Grid>(param_.virtual_lidar_x, param_.virtual_lidar_y);
-    // TODO(badai-nguyen): Temporary add radial limit to 200.0m constant value.
-    // need to be updated unify with cropbox range parameter
+    
+    // Calculate grid_radial_limit from bounding box (maximum distance from origin to any corner)
+    const float dx_max = std::max(std::abs(param_.x_max), std::abs(param_.x_min));
+    const float dy_max = std::max(std::abs(param_.y_max), std::abs(param_.y_min));
+    const float grid_radial_limit = std::sqrt(dx_max * dx_max + dy_max * dy_max);
+    
+    // Use radial_divider_angle_rad as sector_azimuth_size
     grid_ptr_->initialize(
-      param_.grid_size_m, param_.radial_divider_angle_rad, param_.radial_radius_max,
+      param_.grid_size_m, param_.radial_divider_angle_rad, grid_radial_limit,
       param_.anisotropic_scale_a, param_.anisotropic_scale_b);
   }
   ~GridGroundFilter() = default;
