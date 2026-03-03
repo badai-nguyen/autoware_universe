@@ -52,8 +52,8 @@ private:
   double strict_iou_fusion_distance_;
   std::string rough_iou_match_mode_{"iou_x"};
 
-  // Pedestrian size validation parameters
-  PedestrianSizeValidationParams pedestrian_size_params_;
+  // Per-class size validation parameters (key = ObjectClassification label)
+  std::map<uint8_t, ClassSizeValidationParams> size_validation_params_;
 
   bool is_far_enough(const ClusterObjType & obj, const double distance_threshold);
   bool out_of_scope(const ClusterObjType & obj);
@@ -62,11 +62,10 @@ private:
     const sensor_msgs::msg::RegionOfInterest & roi_2, const std::string iou_mode);
 
   /**
-   * @brief Validate size for pedestrian class
-   * @param cluster PointCloud2 cluster data to extract 3D dimensions from
-   * @param cluster_roi The projected cluster ROI
-   * @param label The object classification label
-   * @return True if the object passes size validation (or is not a pedestrian)
+   * @brief Validate 3D size for the given object class using per-class parameters
+   * @param cluster PointCloud2 cluster data to extract dimensions from
+   * @param label Object classification label (ObjectClassification::*)
+   * @return True if validation is disabled for this class or dimensions are within bounds
    */
   bool validateSizeForClass(const sensor_msgs::msg::PointCloud2 & cluster, const uint8_t label);
 };

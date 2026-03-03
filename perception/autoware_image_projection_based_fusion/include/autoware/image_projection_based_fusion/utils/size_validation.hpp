@@ -27,6 +27,7 @@
 #include <limits>
 #include <map>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace autoware::image_projection_based_fusion
@@ -43,51 +44,51 @@ struct SizeValidationResult
 };
 
 /**
- * @brief Pedestrian size validation parameters
+ * @brief Per-class size validation parameters (length = x, width = y, height = z)
  */
-struct PedestrianSizeValidationParams
+struct ClassSizeValidationParams
 {
-  bool enable_size_validation = true;
-
-  // 3D size constraints (x-y footprint only; no z-axis range)
-  double min_width = 0.1;
-  double max_width = 1.0;
+  bool enable = false;
+  double min_length = 0.0;
+  double max_length = 10.0;
+  double min_width = 0.0;
+  double max_width = 10.0;
+  double min_height = 0.0;
+  double max_height = 10.0;
 };
 
 /**
- * @brief Calculate 3D bounding box dimensions from pointcloud cluster
+ * @brief Calculate the dimensions of a pointcloud cluster (length = x, width = y, height = z)
  * @param cluster PointCloud2 cluster data
- * @param length Output: length (x dimension) in meters
- * @param width Output: width (y dimension) in meters
- * @return True if dimensions were successfully calculated (x-y footprint only; no z-axis)
+ * @return length [m], width [m], height [m] if successful
  */
-inline std::optional<std::pair<double, double>> calculateClusterDimensions(
+inline std::optional<std::tuple<double, double, double>> calculateClusterDimensions(
   const sensor_msgs::msg::PointCloud2 & cluster)
 {
   if (cluster.data.empty()) {
     return std::nullopt;
   }
 
-  // Initialize min/max values (x-y only)
   double min_x = std::numeric_limits<double>::max();
   double max_x = std::numeric_limits<double>::lowest();
   double min_y = std::numeric_limits<double>::max();
   double max_y = std::numeric_limits<double>::lowest();
-
-  // Iterate through all points in the cluster
+  double min_z = std::numeric_limits<double>::max();
+  double max_z = std::numeric_limits<double>::lowest();
   size_t valid_points = 0;
+
   for (sensor_msgs::PointCloud2ConstIterator<float> iter_x(cluster, "x"), iter_y(cluster, "y"),
        iter_z(cluster, "z");
        iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
-    // Skip invalid points
     if (!std::isfinite(*iter_x) || !std::isfinite(*iter_y) || !std::isfinite(*iter_z)) {
       continue;
     }
-
     min_x = std::min(min_x, static_cast<double>(*iter_x));
     max_x = std::max(max_x, static_cast<double>(*iter_x));
     min_y = std::min(min_y, static_cast<double>(*iter_y));
     max_y = std::max(max_y, static_cast<double>(*iter_y));
+    min_z = std::min(min_z, static_cast<double>(*iter_z));
+    max_z = std::max(max_z, static_cast<double>(*iter_z));
     valid_points++;
   }
 
@@ -95,72 +96,43 @@ inline std::optional<std::pair<double, double>> calculateClusterDimensions(
     return std::nullopt;
   }
 
-  // Calculate dimensions (x-y footprint only)
-  double length = max_x - min_x;
-  double width = max_y - min_y;
-
-  // Ensure non-zero dimensions
-  if (length <= 0.0 || width <= 0.0) {
+  const double length = max_x - min_x;
+  const double width = max_y - min_y;
+  const double height = max_z - min_z;
+  if (length <= 0.0 || width <= 0.0 || height <= 0.0) {
     return std::nullopt;
   }
-
-  return std::make_pair(length, width);
+  return std::make_tuple(length, width, height);
 }
 
 /**
- * @brief Validate 3D size of a detected object against pedestrian constraints
- * @param cluster PointCloud2 cluster data to extract dimensions from
- * @param params Validation parameters
- * @return Validation result with score and rejection reason if invalid
+ * @brief Validate 3D size of a cluster against class-specific constraints (length = x, width = y, height = z)
+ * @param cluster PointCloud2 cluster data to validate the size
+ * @param params Validation parameters for the object class
+ * @return True if the size is valid, false otherwise
  */
-inline bool isPedestrian3DSizeValidated(
-  const sensor_msgs::msg::PointCloud2 & cluster, const PedestrianSizeValidationParams & params)
+inline bool validateObject3DSize(
+  const sensor_msgs::msg::PointCloud2 & cluster, const ClassSizeValidationParams & params)
 {
-  // Calculate dimensions from pointcloud cluster (x-y footprint only)
+  if (!params.enable) {
+    return true;
+  }
   const auto dimensions = calculateClusterDimensions(cluster);
   if (!dimensions.has_value()) {
     return false;
   }
-
-  // Check length
-  if (dimensions->first < params.min_width) {
+  const double length = std::get<0>(*dimensions);
+  const double width = std::get<1>(*dimensions);
+  const double height = std::get<2>(*dimensions);
+  if (length < params.min_length || length > params.max_length) {
     return false;
   }
-  if (dimensions->first > params.max_width) {
+  if (width < params.min_width || width > params.max_width) {
     return false;
   }
-  // Check width
-  if (dimensions->second < params.min_width) {
+  if (height < params.min_height || height > params.max_height) {
     return false;
   }
-  if (dimensions->second > params.max_width) {
-    return false;
-  }
-  return true;
-}
-
-/**
- * @brief Comprehensive pedestrian size validation combining 3D and 2D checks
- * @param cluster PointCloud2 cluster data to extract 3D dimensions from
- * @param cluster_roi The projected cluster ROI
- * @param image_roi The detected image ROI
- * @param params Validation parameters
- * @return True if the object passes pedestrian size validation
- */
-inline bool validatePedestrianSize(
-  const sensor_msgs::msg::PointCloud2 & cluster, const PedestrianSizeValidationParams & params)
-{
-  if (!params.enable_size_validation) {
-    return true;  // Validation disabled
-  }
-
-  // Check 3D size from pointcloud cluster
-  if (!cluster.data.empty()) {
-    if (!isPedestrian3DSizeValidated(cluster, params)) {
-      return false;
-    }
-  }
-
   return true;
 }
 

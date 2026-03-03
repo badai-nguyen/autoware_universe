@@ -124,30 +124,20 @@
           "description": "If this parameter is true, all of objects labeled UNKNOWN will be removed in post-process.",
           "default": false
         },
-        "pedestrian_size_validation": {
+        "size_validation": {
           "type": "object",
-          "description": "Pedestrian size validation parameters to reduce false positives",
+          "description": "Per-class 3D size validation (length = x, width = y). When enabled, clusters outside the range are rejected for that class.",
           "properties": {
-            "enable": {
-              "type": "boolean",
-              "description": "Enable pedestrian size validation (3D size check)",
-              "default": true
-            },
-            "min_width": {
-              "type": "number",
-              "description": "Minimum pedestrian width in meters (shoulder width)",
-              "default": 0.3,
-              "minimum": 0.1,
-              "maximum": 0.5
-            },
-            "max_width": {
-              "type": "number",
-              "description": "Maximum pedestrian width in meters (with bags/umbrella)",
-              "default": 1.0,
-              "minimum": 0.5,
-              "maximum": 2.0
-            }
-          }
+            "UNKNOWN": { "$ref": "#/definitions/class_size_validation" },
+            "CAR": { "$ref": "#/definitions/class_size_validation" },
+            "TRUCK": { "$ref": "#/definitions/class_size_validation" },
+            "BUS": { "$ref": "#/definitions/class_size_validation" },
+            "TRAILER": { "$ref": "#/definitions/class_size_validation" },
+            "MOTORCYCLE": { "$ref": "#/definitions/class_size_validation" },
+            "BICYCLE": { "$ref": "#/definitions/class_size_validation" },
+            "PEDESTRIAN": { "$ref": "#/definitions/class_size_validation" }
+          },
+          "required": ["UNKNOWN", "CAR", "TRUCK", "BUS", "TRAILER", "MOTORCYCLE", "BICYCLE", "PEDESTRIAN"]
         }
       },
       "required": [
@@ -159,8 +149,57 @@
         "only_allow_inside_cluster",
         "roi_scale_factor",
         "iou_threshold",
-        "remove_unknown"
+        "remove_unknown",
+        "size_validation"
       ]
+    },
+    "class_size_validation": {
+      "type": "object",
+      "description": "Size validation parameters for one object class (length = x, width = y, height = z)",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Enable size validation for this class",
+          "default": false
+        },
+        "min_length": {
+          "type": "number",
+          "description": "Minimum length in x direction [m]",
+          "default": 0.0,
+          "minimum": 0.0
+        },
+        "max_length": {
+          "type": "number",
+          "description": "Maximum length in x direction [m]",
+          "default": 10.0,
+          "minimum": 0.0
+        },
+        "min_width": {
+          "type": "number",
+          "description": "Minimum width in y direction [m]",
+          "default": 0.0,
+          "minimum": 0.0
+        },
+        "max_width": {
+          "type": "number",
+          "description": "Maximum width in y direction [m]",
+          "default": 10.0,
+          "minimum": 0.0
+        },
+        "min_height": {
+          "type": "number",
+          "description": "Minimum height in z direction [m]",
+          "default": 0.0,
+          "minimum": 0.0
+        },
+        "max_height": {
+          "type": "number",
+          "description": "Maximum height in z direction [m]",
+          "default": 10.0,
+          "minimum": 0.0
+        }
+      },
+      "required": ["enable", "min_length", "max_length", "min_width", "max_width", "min_height", "max_height"]
     }
   },
   "properties": {

@@ -64,17 +64,36 @@ RoiClusterFusionNode::RoiClusterFusionNode(const rclcpp::NodeOptions & options)
   fusion_distance_ = declare_parameter<double>("fusion_distance");
   strict_iou_fusion_distance_ = declare_parameter<double>("strict_iou_fusion_distance");
 
-  // Pedestrian size validation parameters
-  pedestrian_size_params_.enable_size_validation =
-    declare_parameter<bool>("pedestrian_size_validation.enable");
-  pedestrian_size_params_.min_width =
-    declare_parameter<double>("pedestrian_size_validation.min_width");
-  pedestrian_size_params_.max_width =
-    declare_parameter<double>("pedestrian_size_validation.max_width");
-
-  RCLCPP_INFO(
-    get_logger(), "Pedestrian size validation: %s",
-    pedestrian_size_params_.enable_size_validation ? "enabled" : "disabled");
+  // Per-class size validation parameters (size_validation.<CLASS>.*)
+  const std::vector<std::pair<std::string, uint8_t>> size_validation_classes = {
+    {"UNKNOWN", ObjectClassification::UNKNOWN},
+    {"CAR", ObjectClassification::CAR},
+    {"TRUCK", ObjectClassification::TRUCK},
+    {"BUS", ObjectClassification::BUS},
+    {"TRAILER", ObjectClassification::TRAILER},
+    {"MOTORCYCLE", ObjectClassification::MOTORCYCLE},
+    {"BICYCLE", ObjectClassification::BICYCLE},
+    {"PEDESTRIAN", ObjectClassification::PEDESTRIAN}};
+  for (const auto & [class_name, label] : size_validation_classes) {
+    const std::string prefix = "size_validation." + class_name + ".";
+    ClassSizeValidationParams params;
+    params.enable = declare_parameter<bool>(prefix + "enable");
+    params.min_length = declare_parameter<double>(prefix + "min_length");
+    params.max_length = declare_parameter<double>(prefix + "max_length");
+    params.min_width = declare_parameter<double>(prefix + "min_width");
+    params.max_width = declare_parameter<double>(prefix + "max_width");
+    params.min_height = declare_parameter<double>(prefix + "min_height");
+    params.max_height = declare_parameter<double>(prefix + "max_height");
+    size_validation_params_[label] = params;
+    if (params.enable) {
+      RCLCPP_INFO(
+        get_logger(),
+        "Size validation enabled for %s (length [%.2f, %.2f] m, width [%.2f, %.2f] m, height "
+        "[%.2f, %.2f] m)",
+        class_name.c_str(), params.min_length, params.max_length, params.min_width, params.max_width,
+        params.min_height, params.max_height);
+    }
+  }
 
   // publisher
   pub_ptr_ = this->create_publisher<ClusterMsgType>("output", rclcpp::QoS{1});
@@ -341,13 +360,11 @@ void RoiClusterFusionNode::postprocess(
 bool RoiClusterFusionNode::validateSizeForClass(
   const sensor_msgs::msg::PointCloud2 & cluster, const uint8_t label)
 {
-  // NOTE: Currently only validate pedestrians, the other classes are passed through
-  switch (label) {
-    case ObjectClassification::PEDESTRIAN:
-      return validatePedestrianSize(cluster, pedestrian_size_params_);
-    default:
-      return true;
+  const auto it = size_validation_params_.find(label);
+  if (it == size_validation_params_.end()) {
+    return true;
   }
+  return validateObject3DSize(cluster, it->second);
 }
 
 }  // namespace autoware::image_projection_based_fusion

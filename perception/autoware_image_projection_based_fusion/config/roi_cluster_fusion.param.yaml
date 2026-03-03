@@ -17,9 +17,68 @@
       BICYCLE : 0.65
       PEDESTRIAN : 0.2
     remove_unknown: true
-
-    # Pedestrian size validation parameters
-    pedestrian_size_validation:
-      enable: true                    # Enable pedestrian size validation (3D size check)
-      min_width: 0.3                  # Minimum width [m] (shoulder width)
-      max_width: 1.0                  # Maximum width [m] (with bags/umbrella)
+    size_validation:
+      UNKNOWN:
+        enable: false                    # Enable size validation for unknown objects
+        min_length: 0.5                 # Minimum length in x direction [m]
+        max_length: 10.0                # Maximum length in x direction [m]
+        min_width: 0.5                  # Minimum width in y direction [m]
+        max_width: 10.0                 # Maximum width in y direction [m]
+        min_height: 0.2                 # Minimum height in z direction [m]
+        max_height: 5.0                 # Maximum height in z direction [m]
+      CAR:
+        enable: false                    # Enable size validation for cars
+        min_length: 0.0                 # Minimum length in x direction [m]
+        max_length: 5.8                 # Maximum length in x direction [m]
+        min_width: 1.2                  # Minimum width in y direction [m]
+        max_width: 5.0                  # Maximum width in y direction [m]
+        min_height: 0.5                 # Minimum height in z direction [m]
+        max_height: 2.5                 # Maximum height in z direction [m]
+      TRUCK:
+        enable: false                    # Enable size validation for trucks
+        min_length: 0.0                 # Minimum length in x direction [m]
+        max_length: 18.0                # Maximum length in x direction [m]
+        min_width: 1.5                  # Minimum width in y direction [m]
+        max_width: 3.5                  # Maximum width in y direction [m]
+        min_height: 0.5                 # Minimum height in z direction [m]
+        max_height: 4.5                 # Maximum height in z direction [m]
+      BUS:
+        enable: false                    # Enable size validation for buses
+        min_length: 0.0                 # Minimum length in x direction [m]
+        max_length: 17.0                # Maximum length in x direction [m]
+        min_width: 2.0                  # Minimum width in y direction [m]
+        max_width: 3.2                  # Maximum width in y direction [m]
+        min_height: 0.5                 # Minimum height in z direction [m]
+        max_height: 4.5                 # Maximum height in z direction [m]
+      TRAILER:
+        enable: false                    # Enable size validation for trailers
+        min_length: 0.0                 # Minimum length in x direction [m]
+        max_length: 25.0                # Maximum length in x direction [m]
+        min_width: 1.5                  # Minimum width in y direction [m]
+        max_width: 3.2                  # Maximum width in y direction [m]
+        min_height: 0.5                 # Minimum height in z direction [m]
+        max_height: 4.5                 # Maximum height in z direction [m]
+      MOTORCYCLE:
+        enable: false                    # Enable size validation for motorcycles
+        min_length: 1.0                 # Minimum length in x direction [m]
+        max_length: 3.0                 # Maximum length in x direction [m]
+        min_width: 0.5                  # Minimum width in y direction [m]
+        max_width: 1.0                  # Maximum width in y direction [m]
+        min_height: 0.5                 # Minimum height in z direction [m]
+        max_height: 2.5                 # Maximum height in z direction [m]
+      BICYCLE:
+        enable: false                    # Enable size validation for bicycles
+        min_length: 1.0                 # Minimum length in x direction [m]
+        max_length: 3.0                 # Maximum length in x direction [m]
+        min_width: 0.5                  # Minimum width in y direction [m]
+        max_width: 1.0                  # Maximum width in y direction [m]
+        min_height: 0.5                 # Minimum height in z direction [m]
+        max_height: 2.5                 # Maximum height in z direction [m]
+      PEDESTRIAN:
+        enable: true                     # Enable size validation for pedestrians
+        min_length: 0.5                 # Minimum length in x direction [m]
+        max_length: 2.5                 # Maximum length in x direction [m]
+        min_width: 0.3                  # Minimum width in y direction [m]
+        max_width: 1.0                  # Maximum width in y direction [m]
+        min_height: 0.2                 # Minimum height in z direction [m]
+        max_height: 2.5                 # Maximum height in z direction [m]
