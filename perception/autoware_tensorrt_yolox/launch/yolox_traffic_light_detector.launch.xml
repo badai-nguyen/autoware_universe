@@ -3,13 +3,16 @@
   <!-- cspell: ignore semseg -->
   <arg name="data_path" default="$(env HOME)/autoware_data" description="packages data and artifacts directory path"/>
 
-  <arg name="input/image" default="/sensing/camera/camera6/image_raw"/>
+  <arg name="enable_center_crop_batch" default="false" description="enable center crop batch processing"/>
+  <arg name="yolox_onnx_name" default="yolox_s_car_ped_tl_detector_960_960_batch_2.onnx" if="$(var enable_center_crop_batch)"/>
+  <arg name="yolox_onnx_name" default="yolox_s_car_ped_tl_detector_960_960_batch_1.onnx" unless="$(var enable_center_crop_batch)"/>
+
+  <arg name="input/image" default="/sensing/camera/camera4/image_raw"/>
   <arg name="output/objects" default="/perception/traffic_light_recognition/camera6/detection/rois"/>
   <arg name="yolox_param_path" default="$(find-pkg-share autoware_tensorrt_yolox)/config/yolox_traffic_light_detector.param.yaml"/>
-  <arg name="model_path" default="$(var data_path)/tensorrt_yolox/yolox_s_car_ped_tl_detector_960_960_batch_1.onnx" description="model path for traffic light detection"/>
+  <arg name="model_path" default="$(var data_path)/tensorrt_yolox/$(var yolox_onnx_name)" description="model path for traffic light detection"/>
   <arg name="label_path" default="$(var data_path)/tensorrt_yolox/car_ped_tl_detector_labels.txt" description="path name for traffic light detection"/>
   <arg name="color_map_path" default="$(var data_path)/tensorrt_yolox/semseg_color_map.csv" description="color map path"/>
-
   <arg name="use_decompress" default="true" description="use image decompress"/>
   <arg name="build_only" default="false" description="exit after trt engine is built"/>
 
@@ -28,5 +31,6 @@
     <param name="label_path" value="$(var label_path)"/>
     <param name="color_map_path" value="$(var color_map_path)"/>
     <param name="build_only" value="$(var build_only)"/>
+    <param name="enable_center_crop_batch" value="$(var enable_center_crop_batch)"/>
   </node>
 </launch>

@@ -258,6 +258,9 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
                         "label_path": LaunchConfiguration("whole_image_detection/label_path"),
                         "model_path": LaunchConfiguration("whole_image_detection/model_path"),
                         "color_map_path": "",  # not used
+                        "enable_center_crop_batch": LaunchConfiguration(
+                            "enable_center_crop_batch"
+                        ),
                     },
                 ],
                 remappings=[
@@ -340,6 +343,7 @@ def generate_launch_description():
     add_launch_arg("high_accuracy_detection_type")
 
     # whole image detector by yolox
+    add_launch_arg("enable_center_crop_batch")
     add_launch_arg("whole_image_detection/model_path")
     add_launch_arg("whole_image_detection/label_path")
     add_launch_arg("yolox_traffic_light_detector_param_path")

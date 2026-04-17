@@ -30,6 +30,7 @@ namespace autoware::tensorrt_yolox
 TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
 : Node("tensorrt_yolox", node_options)
 {
+  enable_center_crop_batch_ = this->declare_parameter<bool>("enable_center_crop_batch");
   {
     stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
     debug_publisher_ = std::make_unique<autoware_utils::DebugPublisher>(this, this->get_name());
@@ -152,37 +153,73 @@ void TrtYoloXNode::onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg)
   std::vector<cv::Mat> color_masks = {
     cv::Mat(cv::Size(height, width), CV_8UC3, cv::Scalar(0, 0, 0))};
 
-  if (!trt_yolox_->doInference({in_image_ptr->image}, objects, masks, color_masks)) {
+
+  std::vector<cv::Mat> batch_imgs;
+  std::vector<int> crop_xs = {0};
+  std::vector<int> crop_ys = {0};
+  if (enable_center_crop_batch_) {
+    // Get model input size
+    int input_w = trt_yolox_->getInputWidth();
+    int input_h = trt_yolox_->getInputHeight();
+    batch_imgs.push_back(in_image_ptr->image);
+    // Center crop: region of size input_w/2 x input_h/2 from center
+    const cv::Mat &src = in_image_ptr->image;
+    int src_w = src.cols;
+    int src_h = src.rows;
+    int crop_w = input_w;
+    int crop_h = input_h;
+    // Ensure crop size does not exceed source image
+    crop_w = std::min(crop_w, src_w);
+    crop_h = std::min(crop_h, src_h);
+    int crop_x = (src_w - crop_w) / 2;
+    int crop_y = (src_h - crop_h) / 2;
+    cv::Rect roi(crop_x, crop_y, crop_w, crop_h);
+    crop_xs.push_back(crop_x);
+    crop_ys.push_back(crop_y);
+    cv::Mat cropped = src(roi).clone();
+    cv::Mat cropped_resized;
+    cv::resize(cropped, cropped_resized, cv::Size(input_w, input_h));
+    batch_imgs.push_back(cropped_resized);
+    masks.push_back(cv::Mat(cv::Size(input_h, input_w), CV_8UC1, cv::Scalar(0)));
+    color_masks.push_back(cv::Mat(cv::Size(input_h, input_w), CV_8UC3, cv::Scalar(0, 0, 0)));
+  } else {
+    batch_imgs.push_back(in_image_ptr->image);
+  }
+
+  if (!trt_yolox_->doInference(batch_imgs, objects, masks, color_masks)) {
     RCLCPP_WARN(this->get_logger(), "Fail to inference");
     return;
   }
   auto & mask = masks.at(0);
 
-  for (const auto & yolox_object : objects.at(0)) {
-    tier4_perception_msgs::msg::DetectedObjectWithFeature object;
-    object.feature.roi.x_offset = yolox_object.x_offset;
-    object.feature.roi.y_offset = yolox_object.y_offset;
-    object.feature.roi.width = yolox_object.width;
-    object.feature.roi.height = yolox_object.height;
-    object.object.existence_probability = yolox_object.score;
-    object.object.classification = autoware::object_recognition_utils::toObjectClassifications(
-      label_map_[yolox_object.type], 1.0f);
-    out_objects.feature_objects.push_back(object);
-    const auto left = std::max(0, static_cast<int>(object.feature.roi.x_offset));
-    const auto top = std::max(0, static_cast<int>(object.feature.roi.y_offset));
-    const auto right =
-      std::min(static_cast<int>(object.feature.roi.x_offset + object.feature.roi.width), width);
-    const auto bottom =
-      std::min(static_cast<int>(object.feature.roi.y_offset + object.feature.roi.height), height);
-    cv::rectangle(
-      in_image_ptr->image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(0, 0, 255), 3,
-      8, 0);
-    // Refine mask: replacing segmentation mask by roi class
-    // This should remove when the segmentation accuracy is high
-    if (is_roi_overlap_segment_ && trt_yolox_->getMultitaskNum() > 0) {
-      overlapSegmentByRoi(yolox_object, mask, width, height);
+  for (auto batch_index = 0; batch_index < static_cast<int>(batch_imgs.size()); ++batch_index) {
+    for (const auto & yolox_object : objects.at(batch_index)) {
+      tier4_perception_msgs::msg::DetectedObjectWithFeature object;
+      object.feature.roi.x_offset = yolox_object.x_offset + crop_xs.at(batch_index);
+      object.feature.roi.y_offset = yolox_object.y_offset + crop_ys.at(batch_index);
+      object.feature.roi.width = yolox_object.width;
+      object.feature.roi.height = yolox_object.height;
+      object.object.existence_probability = yolox_object.score;
+      object.object.classification = autoware::object_recognition_utils::toObjectClassifications(
+        label_map_[yolox_object.type], 1.0f);
+      out_objects.feature_objects.push_back(object);
+      const auto left = std::max(0, static_cast<int>(object.feature.roi.x_offset));
+      const auto top = std::max(0, static_cast<int>(object.feature.roi.y_offset));
+      const auto right =
+        std::min(static_cast<int>(object.feature.roi.x_offset + object.feature.roi.width), width);
+      const auto bottom =
+        std::min(static_cast<int>(object.feature.roi.y_offset + object.feature.roi.height), height);
+      cv::rectangle(
+        in_image_ptr->image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(0, 0, 255), 3,
+        8, 0);
+      // Refine mask: replacing segmentation mask by roi class
+      // This should remove when the segmentation accuracy is high
+      if (is_roi_overlap_segment_ && trt_yolox_->getMultitaskNum() > 0) {
+        overlapSegmentByRoi(yolox_object, mask, width, height);
+      }
     }
   }
+
   if (trt_yolox_->getMultitaskNum() > 0) {
     sensor_msgs::msg::Image::SharedPtr out_mask_msg =
       cv_bridge::CvImage(std_msgs::msg::Header(), sensor_msgs::image_encodings::MONO8, mask)

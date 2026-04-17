@@ -74,8 +74,11 @@ typedef struct Colormap_
  * @warning  Regarding quantization, we recommend use MinMax calibration due to accuracy drop with
  * Entropy calibration.
  */
-class TrtYoloX
-{
+class TrtYoloX {
+public:
+  // Get model input size
+  int getInputWidth() const { return trt_common_->getInputDims(0).d[3]; }
+  int getInputHeight() const { return trt_common_->getInputDims(0).d[2]; }
 public:
   /**
    * @brief Construct TrtYoloX.
