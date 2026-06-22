@@ -114,6 +114,9 @@ struct LampRegressionArchitecture
   int type_start{8};
   int num_types{6};
   int num_colors{3};
+  /// Mapping from raw model color head index -> Color enum index (GREEN=0, AMBER=1, RED=2).
+  /// Example: [0,1,2] means raw[0]=GREEN, raw[1]=AMBER, raw[2]=RED.
+  std::vector<int> color_index_map{0, 1, 2};
   int cos_index{14};
   int sin_index{15};
   float scale_x_y{2.0f};

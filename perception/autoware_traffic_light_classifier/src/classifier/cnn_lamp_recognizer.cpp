@@ -272,11 +272,34 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
   model_params_.type_start = node_ptr_->declare_parameter<int>("model_params.type_start");
   model_params_.num_types = node_ptr_->declare_parameter<int>("model_params.num_types");
   model_params_.num_colors = node_ptr_->declare_parameter<int>("model_params.num_colors");
+  {
+    const auto color_index_map_param = node_ptr_->declare_parameter<std::vector<int64_t>>(
+      "model_params.color_index_map", std::vector<int64_t>{0, 1, 2});
+    model_params_.color_index_map.clear();
+    model_params_.color_index_map.reserve(color_index_map_param.size());
+    for (const auto idx : color_index_map_param) {
+      model_params_.color_index_map.push_back(static_cast<int>(idx));
+    }
+  }
   model_params_.cos_index = node_ptr_->declare_parameter<int>("model_params.cos_index");
   model_params_.sin_index = node_ptr_->declare_parameter<int>("model_params.sin_index");
   model_params_.scale_x_y =
     static_cast<float>(node_ptr_->declare_parameter<double>("model_params.scale_x_y"));
   model_params_.bbox_offset = 0.5f * (model_params_.scale_x_y - 1.0f);
+
+  if (
+    static_cast<int>(model_params_.color_index_map.size()) != model_params_.num_colors &&
+    !model_params_.color_index_map.empty()) {
+    throw std::runtime_error(
+      "CnnLampRecognizer: model_params.color_index_map must have model_params.num_colors "
+      "entries (or be omitted for default [0,1,2]).");
+  }
+  for (const int mapped_idx : model_params_.color_index_map) {
+    if (mapped_idx < 0 || mapped_idx >= 3) {
+      throw std::runtime_error(
+        "CnnLampRecognizer: model_params.color_index_map values must be in [0, 2].");
+    }
+  }
   {
     const auto anchors_param =
       node_ptr_->declare_parameter<std::vector<double>>("model_params.anchors");
@@ -476,6 +499,10 @@ void CnnLampRecognizer::decodeTlrOutput(
               color_idx = c;
             }
           }
+          const int mapped_color_idx =
+            (color_idx >= 0 && color_idx < static_cast<int>(ml_params.color_index_map.size()))
+              ? ml_params.color_index_map[static_cast<size_t>(color_idx)]
+              : color_idx;
 
           const float score = objectness * max_type_prob;
           if (score < score_threshold_) continue;
@@ -505,7 +532,7 @@ void CnnLampRecognizer::decodeTlrOutput(
           info.box.y2 = y2;
           info.classId = type_idx;
           info.prob = score;
-          info.subClassId = color_idx;
+          info.subClassId = mapped_color_idx;
           info.sin = sin_val;
           info.cos = cos_val;
           raw.push_back(info);
