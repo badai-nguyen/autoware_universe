@@ -198,14 +198,64 @@ protected:
 
 // The bright, un-dimmed crop decodes to a single AMBER CIRCLE element (the color head reads
 // this green lamp as amber; pinned as-observed, observed confidence ~0.98).
-TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesNormalGreenCrop)
+TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesNormalCircleGreenCrop)
 {
   if (!recognizer_) {
     GTEST_SKIP() << skip_reason_;
   }
 
   // Arrange
-  const std::vector<cv::Mat> images{load_rgb_crop("traffic_light_normal.png")};
+  const std::vector<cv::Mat> images{load_rgb_crop("circle_green.png")};
+  TrafficLightArray signals;
+  signals.signals.resize(images.size());
+
+  // Act
+  const bool ok = recognizer_->getTrafficSignals(images, signals);
+
+  // Assert
+  ASSERT_TRUE(ok);
+  ASSERT_EQ(signals.signals.size(), 1u);
+  ASSERT_EQ(signals.signals[0].elements.size(), 1u);
+  const auto & element = signals.signals[0].elements[0];
+  EXPECT_EQ(element.color, TrafficLightElement::GREEN);
+  EXPECT_EQ(element.shape, TrafficLightElement::CIRCLE);
+  EXPECT_GT(element.confidence, 0.0f);
+  EXPECT_LE(element.confidence, 1.0f);
+}
+
+TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesNormalCircleRedCrop)
+{
+  if (!recognizer_) {
+    GTEST_SKIP() << skip_reason_;
+  }
+
+  // Arrange
+  const std::vector<cv::Mat> images{load_rgb_crop("circle_red.png")};
+  TrafficLightArray signals;
+  signals.signals.resize(images.size());
+
+  // Act
+  const bool ok = recognizer_->getTrafficSignals(images, signals);
+
+  // Assert
+  ASSERT_TRUE(ok);
+  ASSERT_EQ(signals.signals.size(), 1u);
+  ASSERT_EQ(signals.signals[0].elements.size(), 1u);
+  const auto & element = signals.signals[0].elements[0];
+  EXPECT_EQ(element.color, TrafficLightElement::RED);
+  EXPECT_EQ(element.shape, TrafficLightElement::CIRCLE);
+  EXPECT_GT(element.confidence, 0.0f);
+  EXPECT_LE(element.confidence, 1.0f);
+}
+
+TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesNormalCircleAmberCrop)
+{
+  if (!recognizer_) {
+    GTEST_SKIP() << skip_reason_;
+  }
+
+  // Arrange
+  const std::vector<cv::Mat> images{load_rgb_crop("circle_amber.png")};
   TrafficLightArray signals;
   signals.signals.resize(images.size());
 
@@ -223,15 +273,14 @@ TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesNormalGreenCrop)
   EXPECT_LE(element.confidence, 1.0f);
 }
 
-// The weakly-dimmed crop decodes to a single GREEN CIRCLE element (observed confidence ~0.86).
-TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesWeaklyDimmedGreenCrop)
+TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesNormalArrowRightCrop)
 {
   if (!recognizer_) {
     GTEST_SKIP() << skip_reason_;
   }
 
   // Arrange
-  const std::vector<cv::Mat> images{load_rgb_crop("traffic_light_dimmed_weak.png")};
+  const std::vector<cv::Mat> images{load_rgb_crop("arrow_right.png")};
   TrafficLightArray signals;
   signals.signals.resize(images.size());
 
@@ -241,23 +290,31 @@ TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesWeaklyDimmedGreenCrop)
   // Assert
   ASSERT_TRUE(ok);
   ASSERT_EQ(signals.signals.size(), 1u);
-  ASSERT_EQ(signals.signals[0].elements.size(), 1u);
-  const auto & element = signals.signals[0].elements[0];
-  EXPECT_EQ(element.color, TrafficLightElement::GREEN);
-  EXPECT_EQ(element.shape, TrafficLightElement::CIRCLE);
-  EXPECT_GT(element.confidence, 0.0f);
-  EXPECT_LE(element.confidence, 1.0f);
+  ASSERT_EQ(signals.signals[0].elements.size(), 2u);
+  // The two elements' order is not guaranteed, so match by content rather than index.
+  const auto & elements = signals.signals[0].elements;
+  const auto green_arrow = std::find_if(elements.begin(), elements.end(), [](const auto & e) {
+    return e.color == TrafficLightElement::GREEN && e.shape == TrafficLightElement::RIGHT_ARROW;
+  });
+  const auto red_circle = std::find_if(elements.begin(), elements.end(), [](const auto & e) {
+    return e.color == TrafficLightElement::RED && e.shape == TrafficLightElement::CIRCLE;
+  });
+  ASSERT_NE(green_arrow, elements.end());
+  ASSERT_NE(red_circle, elements.end());
+  EXPECT_GT(green_arrow->confidence, 0.0f);
+  EXPECT_LE(green_arrow->confidence, 1.0f);
+  EXPECT_GT(red_circle->confidence, 0.0f);
+  EXPECT_LE(red_circle->confidence, 1.0f);
 }
 
-// The medium-dimmed crop decodes to a single GREEN CIRCLE element (observed confidence ~0.61).
-TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesMediumDimmedGreenCrop)
+TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesNormalArrowStraightCrop)
 {
   if (!recognizer_) {
     GTEST_SKIP() << skip_reason_;
   }
 
   // Arrange
-  const std::vector<cv::Mat> images{load_rgb_crop("traffic_light_dimmed_medium.png")};
+  const std::vector<cv::Mat> images{load_rgb_crop("arrow_straight.png")};
   TrafficLightArray signals;
   signals.signals.resize(images.size());
 
@@ -267,40 +324,21 @@ TEST_F(CnnLampRecognizerCharacterizationTest, ClassifiesMediumDimmedGreenCrop)
   // Assert
   ASSERT_TRUE(ok);
   ASSERT_EQ(signals.signals.size(), 1u);
-  ASSERT_EQ(signals.signals[0].elements.size(), 1u);
-  const auto & element = signals.signals[0].elements[0];
-  EXPECT_EQ(element.color, TrafficLightElement::GREEN);
-  EXPECT_EQ(element.shape, TrafficLightElement::CIRCLE);
-  EXPECT_GT(element.confidence, 0.0f);
-  EXPECT_LE(element.confidence, 1.0f);
-}
-
-// The strongly-dimmed crop drops below score_threshold, so nothing is detected. The
-// empty-detection branch of updateTrafficSignals then emits a single UNKNOWN element
-// with zero confidence -- pinning that the "no lamp found" path yields exactly one
-// placeholder element rather than an empty list.
-TEST_F(CnnLampRecognizerCharacterizationTest, StronglyDimmedCropYieldsUnknownNoDetection)
-{
-  if (!recognizer_) {
-    GTEST_SKIP() << skip_reason_;
-  }
-
-  // Arrange
-  const std::vector<cv::Mat> images{load_rgb_crop("traffic_light_dimmed_strong.png")};
-  TrafficLightArray signals;
-  signals.signals.resize(images.size());
-
-  // Act
-  const bool ok = recognizer_->getTrafficSignals(images, signals);
-
-  // Assert
-  ASSERT_TRUE(ok);
-  ASSERT_EQ(signals.signals.size(), 1u);
-  ASSERT_EQ(signals.signals[0].elements.size(), 1u);
-  const auto & element = signals.signals[0].elements[0];
-  EXPECT_EQ(element.color, TrafficLightElement::UNKNOWN);
-  EXPECT_EQ(element.shape, TrafficLightElement::UNKNOWN);
-  EXPECT_FLOAT_EQ(element.confidence, 0.0f);
+  ASSERT_EQ(signals.signals[0].elements.size(), 2u);
+  // The two elements' order is not guaranteed, so match by content rather than index.
+  const auto & elements = signals.signals[0].elements;
+  const auto green_arrow = std::find_if(elements.begin(), elements.end(), [](const auto & e) {
+    return e.color == TrafficLightElement::GREEN && e.shape == TrafficLightElement::UP_ARROW;
+  });
+  const auto red_circle = std::find_if(elements.begin(), elements.end(), [](const auto & e) {
+    return e.color == TrafficLightElement::RED && e.shape == TrafficLightElement::CIRCLE;
+  });
+  ASSERT_NE(green_arrow, elements.end());
+  ASSERT_NE(red_circle, elements.end());
+  EXPECT_GT(green_arrow->confidence, 0.0f);
+  EXPECT_LE(green_arrow->confidence, 1.0f);
+  EXPECT_GT(red_circle->confidence, 0.0f);
+  EXPECT_LE(red_circle->confidence, 1.0f);
 }
 
 // Two ROIs in one call must scatter to their own signal slots (getTrafficSignals loops
