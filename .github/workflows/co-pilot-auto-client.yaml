@@ -49,7 +49,7 @@ jobs:
       - name: Generate token
         id: generate-token
         if: env.SHOULD_PROCEED == 'true'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app_id: ${{ secrets.INTERNAL_APP_ID }}
           private_key: ${{ secrets.INTERNAL_PRIVATE_KEY }}
